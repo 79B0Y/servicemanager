@@ -60,25 +60,37 @@ pip install homeassistant==${HASS_VERSION}
 
 nohup bash -c 'source /root/homeassistant/bin/activate && hass' > /root/hass_runtime.log 2>&1 &
 for i in \$(seq 1 90); do
-  sleep 60
+  sleep 5
   nc -z 127.0.0.1 8123 && break
 done || exit 1
 
+# Verify configuration
+source /root/homeassistant/bin/activate
+if ! hass --script check_config -c /root/.homeassistant >/root/check_config_result.txt 2>&1; then
+  echo "[ERROR] Configuration validation failed"
+  cat /root/check_config_result.txt
+  exit 2
+fi
+
 pkill -f hass || true
 
-source /root/homeassistant/bin/activate
 pip install zlib-ng isal --no-binary :all:
 
 grep -q '^logger:' /root/.homeassistant/configuration.yaml || echo -e '\nlogger:\n  default: critical' >> /root/.homeassistant/configuration.yaml
 grep -q 'use_x_frame_options:' /root/.homeassistant/configuration.yaml || echo -e '\nhttp:\n  use_x_frame_options: false' >> /root/.homeassistant/configuration.yaml
 EOF
 
-if [[ $? -eq 0 ]]; then
+EXIT_CODE=$?
+if [[ \$EXIT_CODE -eq 0 ]]; then
   VERSION_STR=$(proot-distro login "$PROOT_DISTRO" -- bash -c "source /root/homeassistant/bin/activate && hass --version")
-  echo "[OK] Installation succeeded. Version: $VERSION_STR"
-  mqtt_report success "\"version\":\"$VERSION_STR\",\"log\":\"$LOG_FILE\"," 
+  echo "[OK] Installation succeeded. Version: \$VERSION_STR"
+  mqtt_report success "\"version\":\"\$VERSION_STR\",\"log\":\"$LOG_FILE\"," 
+elif [[ \$EXIT_CODE -eq 2 ]]; then
+  echo "[ERROR] Installation failed due to invalid configuration"
+  mqtt_report failed "\"error\":\"config_invalid\",\"message\":\"Configuration check failed.\",\"log\":\"$LOG_FILE\"," 
+  exit 2
 else
-  echo "[ERROR] Installation failed"
+  echo "[ERROR] Installation failed with exit code \$EXIT_CODE"
   mqtt_report failed "\"error\":\"install_failed\",\"message\":\"Installation process failed.\",\"log\":\"$LOG_FILE\"," 
-  exit 1
+  exit \$EXIT_CODE
 fi
