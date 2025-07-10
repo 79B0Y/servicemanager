@@ -17,46 +17,51 @@ MQTT_TOPIC="isg/backup/$SERVICE_ID/status"
 mkdir -p "$BACKUP_DIR"
 exec > >(tee -a "$LOG_FILE") 2>&1
 
-echo "[INFO] 开始备份 Home Assistant 配置..."
-
-# 加载 MQTT 配置
-eval $(python3 -c "
+# 加载 MQTT 配置（兼容未安装 PyYAML）
+if ! python3 -c "import yaml" 2>/dev/null; then
+  echo "[WARN] PyYAML not installed, using default MQTT config"
+  MQTT_HOST="127.0.0.1"
+  MQTT_PORT=1883
+  MQTT_USERNAME=""
+  MQTT_PASSWORD=""
+else
+  eval $(python3 -c "
 import yaml
 with open('$CONFIG_PATH') as f:
-  mqtt = yaml.safe_load(f).get('mqtt', {})
-  print(f'MQTT_HOST={mqtt.get('host','127.0.0.1')}')
-  print(f'MQTT_PORT={mqtt.get('port',1883)}')
-  print(f'MQTT_USER={mqtt.get('username','')}')
-  print(f'MQTT_PASS={mqtt.get('password','')}')
-")
+    mqtt = yaml.safe_load(f).get('mqtt', {})
+    for k in ('host', 'port', 'username', 'password'):
+        v = mqtt.get(k, '')
+        print(f'MQTT_{k.upper()}=\"{v}\"')")
+fi
 
 mqtt_report() {
   local status=$1
   local extra=$2
-  mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" -u "$MQTT_USER" -P "$MQTT_PASS" \
+  mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" \
     -t "$MQTT_TOPIC" -m "{\"service\":\"$SERVICE_ID\",\"status\":\"$status\",$extra\"timestamp\":$(date +%s)}" -r -q 1 >/dev/null 2>&1
 }
 
 # 检查运行状态
-bash ./status.sh --quiet || {
-  echo "[WARN] 服务未运行，跳过备份"
-  mqtt_report failed "\"error\":\"not_running\"," 
+bash ./status.sh --quiet
+if [[ $? -ne 0 ]]; then
+  echo "[WARN] Service not running, skipping backup"
+  mqtt_report failed "\"error\":\"not_running\",\"message\":\"Home Assistant is not running. Cannot perform backup.\",\"log\":\"$LOG_FILE\"," 
   exit 1
-}
+fi
 
 mqtt_report backuping ""
-echo "[INFO] 正在压缩 $HA_DIR..."
+echo "[INFO] Compressing $HA_DIR..."
 
 proot-distro login "$PROOT_DISTRO" -- \
   tar -czf "/sdcard/isgbackup/$SERVICE_ID/homeassistant_backup_${TIMESTAMP}.tar.gz" -C /root .homeassistant
 
 if [[ $? -eq 0 ]]; then
   SIZE_KB=$(du -k "$BACKUP_FILE" | cut -f1)
-  echo "[OK] 备份完成，大小 ${SIZE_KB}KB"
+  echo "[OK] Backup completed, size ${SIZE_KB}KB"
   mqtt_report success "\"file\":\"$BACKUP_FILE\",\"size_kb\":$SIZE_KB,\"log\":\"$LOG_FILE\"," 
 else
-  echo "[ERROR] 备份失败"
-  mqtt_report failed "\"error\":\"tar_failed\",\"log\":\"$LOG_FILE\"," 
+  echo "[ERROR] Backup failed"
+  mqtt_report failed "\"error\":\"tar_failed\",\"message\":\"Failed to compress configuration directory.\",\"log\":\"$LOG_FILE\"," 
   exit 1
 fi
 
