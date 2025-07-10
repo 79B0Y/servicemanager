@@ -1,18 +1,23 @@
 #!/data/data/com.termux/files/usr/bin/bash
 
-# restore.sh - Restore Home Assistant configuration from latest or given backup
+# restore.sh - Restore Home Assistant configuration from backup
 # Path: /data/data/com.termux/files/home/servicemanager/hass/restore.sh
 
 SERVICE_ID="hass"
 PROOT_DISTRO="${PROOT_DISTRO:-ubuntu}"
 BACKUP_DIR="/sdcard/isgbackup/$SERVICE_ID"
+LOG_DIR="$BACKUP_DIR/logs"
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/restore.log"
+MAX_LINES=100
 CONFIG_PATH="/data/data/com.termux/files/home/servicemanager/configuration.yaml"
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-LOG_FILE="$BACKUP_DIR/restore_${TIMESTAMP}.log"
 MQTT_TOPIC="isg/restore/$SERVICE_ID/status"
 
-mkdir -p "$BACKUP_DIR"
 exec > >(tee -a "$LOG_FILE") 2>&1
+tail -n $MAX_LINES "$LOG_FILE" > "$LOG_FILE.tmp" && mv "$LOG_FILE.tmp" "$LOG_FILE"
+
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+INPUT_BACKUP="$1"
 
 # Load MQTT config
 if ! python3 -c "import yaml" 2>/dev/null; then
@@ -44,7 +49,6 @@ mqtt_report restoring ""
 bash ./stop.sh
 
 # Determine backup file
-INPUT_BACKUP="$1"
 if [[ -n "$INPUT_BACKUP" && -f "$BACKUP_DIR/$INPUT_BACKUP" ]]; then
   FILE="$BACKUP_DIR/$INPUT_BACKUP"
 elif FILE=$(ls -t "$BACKUP_DIR"/homeassistant_backup_*.tar.gz 2>/dev/null | head -n1); then
@@ -58,8 +62,7 @@ else
   exit 1
 fi
 
-# Extract
-echo "[INFO] Restoring configuration..."
+# Restore
 proot-distro login "$PROOT_DISTRO" -- bash -c "\
   rm -rf /root/.homeassistant && \
   mkdir -p /root/.homeassistant && \
@@ -71,7 +74,5 @@ if [[ $? -ne 0 ]]; then
   exit 1
 fi
 
-# Start service
 bash ./start.sh
-
 mqtt_report success "\"file\":\"$FILE\",\"log\":\"$LOG_FILE\","
