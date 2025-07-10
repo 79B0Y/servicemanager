@@ -1,24 +1,29 @@
 #!/data/data/com.termux/files/usr/bin/bash
 
 # status.sh - 检查 Home Assistant 当前状态并通过 MQTT 上报
-# 脚本路径: /data/data/com.termux/files/home/servicemanager/hass/status.sh
+# 路径: /data/data/com.termux/files/home/servicemanager/hass/status.sh
 
 CONFIG_PATH="/data/data/com.termux/files/home/servicemanager/configuration.yaml"
 SERVICE_ID="hass"
 MQTT_TOPIC="isg/status/$SERVICE_ID/status"
 MQTT_TIMEOUT=${MQTT_TIMEOUT:-5}
 
-# 加载 MQTT 配置
-eval $(python3 -c "
+# 加载 MQTT 配置（兼容未安装 PyYAML 的情况）
+if ! python3 -c "import yaml" 2>/dev/null; then
+  echo "[WARN] PyYAML 未安装，使用默认 MQTT 配置"
+  MQTT_HOST="127.0.0.1"
+  MQTT_PORT=1883
+  MQTT_USERNAME=""
+  MQTT_PASSWORD=""
+else
+  eval $(python3 -c "
 import yaml
 with open('$CONFIG_PATH') as f:
-  cfg = yaml.safe_load(f)
-  mqtt = cfg.get('mqtt', {})
-  print(f'MQTT_HOST={mqtt.get("host", "127.0.0.1")}')
-  print(f'MQTT_PORT={mqtt.get("port", 1883)}')
-  print(f'MQTT_USER={mqtt.get("username", "")}')
-  print(f'MQTT_PASS={mqtt.get("password", "")}')
-")
+    mqtt = yaml.safe_load(f).get('mqtt', {})
+    for k in ('host', 'port', 'username', 'password'):
+        v = mqtt.get(k, '')
+        print(f'MQTT_{k.upper()}=\"{v}\"')")
+fi
 
 get_runtime_minutes() {
   local pid=$1
@@ -31,10 +36,11 @@ report_status() {
   local pid=$2
   local runtime=$3
   local port_ok=$4
-  local payload="{\"status\":\"$status\",\"pid\":$pid,\"runtime_min\":$runtime,\"port_ok\":$port_ok}"
+  local payload="{\"service\":\"$SERVICE_ID\",\"status\":\"$status\",\"pid\":$pid,\"runtime_min\":$runtime,\"port_ok\":$port_ok,\"timestamp\":$(date +%s)}"
+  echo "[DEBUG] MQTT Payload: $payload"
   mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" \
-    -u "$MQTT_USER" -P "$MQTT_PASS" \
-    -t "$MQTT_TOPIC" -m "$payload" -r -q 1 -W $MQTT_TIMEOUT >/dev/null 2>&1
+    -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" \
+    -t "$MQTT_TOPIC" -m "$payload" -r -q 1 -W $MQTT_TIMEOUT
 }
 
 quiet=0
@@ -42,6 +48,7 @@ json=0
 for arg in "$@"; do
   [[ "$arg" == "--quiet" ]] && quiet=1
   [[ "$arg" == "--json" ]] && json=1
+
 done
 
 pid=$(pgrep -f "[h]omeassistant")
