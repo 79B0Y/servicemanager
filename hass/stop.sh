@@ -7,14 +7,18 @@ SERVICE_ID="hass"
 LSVDIR="/data/data/com.termux/files/usr/var/service"
 CONFIG_PATH="/data/data/com.termux/files/home/servicemanager/configuration.yaml"
 BACKUP_DIR="/sdcard/isgbackup/$SERVICE_ID"
-LOG_FILE="$BACKUP_DIR/stop_$(date +%Y%m%d-%H%M%S).log"
+LOG_DIR="$BACKUP_DIR/logs"
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/stop.log"
+MAX_LINES=100
 STOP_LOG="$BACKUP_DIR/hass_stoptime.log"
 MQTT_TOPIC="isg/run/$SERVICE_ID/status"
 MAX_TRIES=30
 DISABLED_FLAG=".disabled"
 
-mkdir -p "$BACKUP_DIR"
 exec > >(tee -a "$LOG_FILE") 2>&1
+# Trim log
+tail -n $MAX_LINES "$LOG_FILE" > "$LOG_FILE.tmp" && mv "$LOG_FILE.tmp" "$LOG_FILE"
 
 echo "[INFO] Stopping Home Assistant..."
 
