@@ -47,36 +47,31 @@ mqtt_report() {
 
 mqtt_report installing ""
 
-proot-distro login "$PROOT_DISTRO" -- bash -c "set -e
-  echo '[STEP] Update system dependencies'
-  apt update && apt install -y ffmpeg libturbojpeg
+proot-distro login "$PROOT_DISTRO" -- bash <<'EOF'
+set -e
 
-  echo '[STEP] Create virtualenv /root/homeassistant'
-  python3 -m venv /root/homeassistant
+apt update && apt install -y ffmpeg libturbojpeg
 
-  echo '[STEP] Install dependencies and Home Assistant'
-  source /root/homeassistant/bin/activate && \
-  pip install --upgrade pip && \
-  pip install numpy pillow mutagen aiohttp==3.10.8 attrs==23.2.0 PyTurboJPEG && \
-  pip install homeassistant==$HASS_VERSION
+python3 -m venv /root/homeassistant
+source /root/homeassistant/bin/activate
+pip install --upgrade pip
+pip install numpy pillow mutagen aiohttp==3.10.8 attrs==23.2.0 PyTurboJPEG
+pip install homeassistant=$HASS_VERSION
 
-  echo '[STEP] First run to generate config'
-  nohup bash -c 'source /root/homeassistant/bin/activate && hass' > /root/hass_runtime.log 2>&1 &
-  for i in $(seq 1 90); do
-    sleep 60
-    nc -z 127.0.0.1 8123 && break
-  done || exit 1
+nohup bash -c 'source /root/homeassistant/bin/activate && hass' > /root/hass_runtime.log 2>&1 &
+for i in $(seq 1 90); do
+  sleep 60
+  nc -z 127.0.0.1 8123 && break
+done || exit 1
 
-  echo '[STEP] Kill initial process'
-  pkill -f hass || true
+pkill -f hass || true
 
-  echo '[STEP] Install compression libs'
-  source /root/homeassistant/bin/activate && pip install zlib-ng isal --no-binary :all:
+source /root/homeassistant/bin/activate
+pip install zlib-ng isal --no-binary :all:
 
-  echo '[STEP] Patch configuration.yaml'
-  grep -q '^logger:' /root/.homeassistant/configuration.yaml || echo -e '\nlogger:\n  default: critical' >> /root/.homeassistant/configuration.yaml
-  grep -q 'use_x_frame_options:' /root/.homeassistant/configuration.yaml || echo -e '\nhttp:\n  use_x_frame_options: false' >> /root/.homeassistant/configuration.yaml
-"
+grep -q '^logger:' /root/.homeassistant/configuration.yaml || echo -e '\nlogger:\n  default: critical' >> /root/.homeassistant/configuration.yaml
+grep -q 'use_x_frame_options:' /root/.homeassistant/configuration.yaml || echo -e '\nhttp:\n  use_x_frame_options: false' >> /root/.homeassistant/configuration.yaml
+EOF
 
 if [[ $? -eq 0 ]]; then
   VERSION_STR=$(proot-distro login "$PROOT_DISTRO" -- bash -c "source /root/homeassistant/bin/activate && hass --version")
