@@ -6,19 +6,25 @@
 SERVICE_ID="hass"
 PROOT_DISTRO="${PROOT_DISTRO:-ubuntu}"
 BACKUP_DIR="/sdcard/isgbackup/$SERVICE_ID"
+LOG_DIR="$BACKUP_DIR/logs"
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/update.log"
+MAX_LINES=100
+
 CONFIG_PATH="/data/data/com.termux/files/home/servicemanager/configuration.yaml"
 TARGET_VERSION="${1:-$TARGET_VERSION}"
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-LOG_FILE="$BACKUP_DIR/update_${TIMESTAMP}.log"
-MQTT_TOPIC="isg/update/$SERVICE_ID/status"
 
 if [[ -z "$TARGET_VERSION" ]]; then
+  echo "[USAGE] bash update.sh <version>"
+  echo "        or export TARGET_VERSION=<version> && bash update.sh"
   echo "[ERROR] TARGET_VERSION not provided."
   exit 1
 fi
 
-mkdir -p "$BACKUP_DIR"
 exec > >(tee -a "$LOG_FILE") 2>&1
+
+# Trim log to latest 100 lines
+tail -n $MAX_LINES "$LOG_FILE" > "$LOG_FILE.tmp" && mv "$LOG_FILE.tmp" "$LOG_FILE"
 
 # Load MQTT config
 if ! python3 -c "import yaml" 2>/dev/null; then
@@ -36,6 +42,8 @@ with open('$CONFIG_PATH') as f:
         v = mqtt.get(k, '')
         print(f'MQTT_{k.upper()}=\"{v}\"')")
 fi
+
+MQTT_TOPIC="isg/update/$SERVICE_ID/status"
 
 mqtt_report() {
   local status=$1
