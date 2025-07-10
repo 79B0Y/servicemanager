@@ -6,7 +6,6 @@
 CONFIG_PATH="/data/data/com.termux/files/home/servicemanager/configuration.yaml"
 SERVICE_ID="hass"
 MQTT_TOPIC="isg/status/$SERVICE_ID/status"
-MQTT_TIMEOUT=${MQTT_TIMEOUT:-5}
 
 # 加载 MQTT 配置（兼容未安装 PyYAML 的情况）
 if ! python3 -c "import yaml" 2>/dev/null; then
@@ -40,7 +39,7 @@ report_status() {
   echo "[DEBUG] MQTT Payload: $payload"
   mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" \
     -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" \
-    -t "$MQTT_TOPIC" -m "$payload" -r -q 1 -W $MQTT_TIMEOUT
+    -t "$MQTT_TOPIC" -m "$payload" -r -q 1 >/dev/null 2>&1
 }
 
 quiet=0
