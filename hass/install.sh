@@ -7,13 +7,17 @@ SERVICE_ID="hass"
 PROOT_DISTRO="${PROOT_DISTRO:-ubuntu}"
 HASS_VERSION="${HASS_VERSION:-2025.5.3}"
 BACKUP_DIR="/sdcard/isgbackup/$SERVICE_ID"
+LOG_DIR="$BACKUP_DIR/logs"
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/install.log"
+MAX_LINES=100
+
 CONFIG_PATH="/data/data/com.termux/files/home/servicemanager/configuration.yaml"
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-LOG_FILE="$BACKUP_DIR/install_${TIMESTAMP}.log"
 MQTT_TOPIC="isg/install/$SERVICE_ID/status"
 
-mkdir -p "$BACKUP_DIR"
 exec > >(tee -a "$LOG_FILE") 2>&1
+# Trim to last 100 lines
+tail -n $MAX_LINES "$LOG_FILE" > "$LOG_FILE.tmp" && mv "$LOG_FILE.tmp" "$LOG_FILE"
 
 echo "[INFO] Installing Home Assistant v$HASS_VERSION..."
 
