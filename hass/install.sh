@@ -47,7 +47,7 @@ mqtt_report() {
 
 mqtt_report installing ""
 
-proot-distro login "$PROOT_DISTRO" -- bash <<'EOF'
+proot-distro login "$PROOT_DISTRO" -- bash <<EOF
 set -e
 
 apt update && apt install -y ffmpeg libturbojpeg
@@ -56,10 +56,10 @@ python3 -m venv /root/homeassistant
 source /root/homeassistant/bin/activate
 pip install --upgrade pip
 pip install numpy pillow mutagen aiohttp==3.10.8 attrs==23.2.0 PyTurboJPEG
-pip install homeassistant=$HASS_VERSION
+pip install homeassistant==${HASS_VERSION}
 
 nohup bash -c 'source /root/homeassistant/bin/activate && hass' > /root/hass_runtime.log 2>&1 &
-for i in $(seq 1 90); do
+for i in \$(seq 1 90); do
   sleep 60
   nc -z 127.0.0.1 8123 && break
 done || exit 1
