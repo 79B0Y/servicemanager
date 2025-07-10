@@ -1,0 +1,12 @@
+# VERSION.yaml - Home Assistant 脚本版本记录
+# 路径: /data/data/com.termux/files/home/servicemanager/hass/VERSION.yaml
+
+current: 1.0.0
+
+history:
+  - version: 1.0.0
+    date: 2025-07-10
+    changes:
+      - 首次发布 hass 全生命周期脚本（install/start/stop/status/...）
+      - 支持 MQTT 上报、Proot 容器安装、自愈机制、备份还原
+      - 兼容 Termux + rooted Android 运行环境
