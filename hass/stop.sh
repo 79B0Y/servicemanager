@@ -1,67 +1,47 @@
 #!/data/data/com.termux/files/usr/bin/bash
-
-# stop.sh - Stop Home Assistant and report status via MQTT
-# Path: /data/data/com.termux/files/home/servicemanager/hass/stop.sh
+set -euo pipefail
 
 SERVICE_ID="hass"
-LSVDIR="/data/data/com.termux/files/usr/var/service"
-CONFIG_PATH="/data/data/com.termux/files/home/servicemanager/configuration.yaml"
-BACKUP_DIR="/sdcard/isgbackup/$SERVICE_ID"
-LOG_DIR="$BACKUP_DIR/logs"
-mkdir -p "$LOG_DIR"
-LOG_FILE="$LOG_DIR/stop.log"
-MAX_LINES=100
-STOP_LOG="$BACKUP_DIR/hass_stoptime.log"
-MQTT_TOPIC="isg/run/$SERVICE_ID/status"
+SERVICE_DIR="/data/data/com.termux/files/home/servicemanager/$SERVICE_ID"
+LOG_FILE="$SERVICE_DIR/logs/stop.log"
+LSVDIR="/data/data/com.termux/files/usr/var/lib/runsv"
+DISABLED_FLAG="$SERVICE_DIR/.disabled"
 MAX_TRIES=30
-DISABLED_FLAG=".disabled"
 
-exec > >(tee -a "$LOG_FILE") 2>&1
-# Trim log
-tail -n $MAX_LINES "$LOG_FILE" > "$LOG_FILE.tmp" && mv "$LOG_FILE.tmp" "$LOG_FILE"
-
-echo "[INFO] Stopping Home Assistant..."
-
-# Load MQTT config
-if ! python3 -c "import yaml" 2>/dev/null; then
-  echo "[WARN] PyYAML not installed, using default MQTT config"
-  MQTT_HOST="127.0.0.1"
-  MQTT_PORT=1883
-  MQTT_USERNAME=""
-  MQTT_PASSWORD=""
-else
-  eval $(python3 -c "
-import yaml
-with open('$CONFIG_PATH') as f:
-    mqtt = yaml.safe_load(f).get('mqtt', {})
-    for k in ('host', 'port', 'username', 'password'):
-        v = mqtt.get(k, '')
-        print(f'MQTT_{k.upper()}=\"{v}\"')")
-fi
+mkdir -p "$(dirname "$LOG_FILE")"
 
 mqtt_report() {
-  local status=$1
-  local payload="{\"status\":\"$status\"}"
-  mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" \
-    -t "$MQTT_TOPIC" -m "$payload" -r -q 1 >/dev/null 2>&1
+  local topic="$1"
+  local payload="$2"
+  mosquitto_pub -F "$SERVICE_DIR/configuration.yaml" -t "$topic" -m "$payload" || true
+  echo "[MQTT] $topic -> $payload" >> "$LOG_FILE"
 }
 
-mqtt_report stoping
+log() {
+  echo "[$(date +%F %T)] $*" | tee -a "$LOG_FILE"
+}
 
-echo d > "$LSVDIR/$SERVICE_ID/supervise/control"
-echo "[INFO] Stop signal sent, waiting for confirmation..."
+log "🛑 Sending stop signal to Home Assistant"
+echo d > "$LSVDIR/$SERVICE_ID/supervise/control" || true
+mqtt_report "isg/run/$SERVICE_ID/status" '{"status": "stoping"}'
 
-for ((i=0; i<MAX_TRIES; i++)); do
-  sleep 10
-  if ! bash ./status.sh --quiet >/dev/null; then
-    touch "$DISABLED_FLAG"
-    mqtt_report stopped
-    echo "[OK] Home Assistant stopped"
-    echo "[INFO] Stop log: $STOP_LOG"
-    exit 0
+TRIES=0
+while (( TRIES < MAX_TRIES )); do
+  if bash "$SERVICE_DIR/status.sh" --quiet; then
+    sleep 10
+  else
+    break
   fi
+  TRIES=$((TRIES+1))
 done
 
-echo "[ERROR] Failed to stop Home Assistant"
-mqtt_report failed
-exit 1
+if bash "$SERVICE_DIR/status.sh" --quiet; then
+  mqtt_report "isg/run/$SERVICE_ID/status" '{"status": "failed", "message": "Service is still running after stop attempt."}'
+  log "❌ Failed to stop Home Assistant."
+  exit 1
+else
+  touch "$DISABLED_FLAG"
+  mqtt_report "isg/run/$SERVICE_ID/status" '{"status": "stoped", "message": "Service stopped and .disabled flag set."}'
+  log "✅ Service stopped and .disabled created."
+  exit 0
+fi
