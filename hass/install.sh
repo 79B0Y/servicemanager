@@ -1,97 +1,97 @@
 #!/data/data/com.termux/files/usr/bin/bash
-
-# install.sh - Install Home Assistant into proot Ubuntu container and report via MQTT
-# Path: /data/data/com.termux/files/home/servicemanager/hass/install.sh
+set -euo pipefail
 
 SERVICE_ID="hass"
+SERVICE_DIR="/data/data/com.termux/files/home/servicemanager/$SERVICE_ID"
+LOG_DIR="$SERVICE_DIR/logs"
+LOG_FILE="$LOG_DIR/install.log"
 PROOT_DISTRO="${PROOT_DISTRO:-ubuntu}"
 HASS_VERSION="${HASS_VERSION:-2025.5.3}"
-BACKUP_DIR="/sdcard/isgbackup/$SERVICE_ID"
-LOG_DIR="$BACKUP_DIR/logs"
+
 mkdir -p "$LOG_DIR"
-LOG_FILE="$LOG_DIR/install.log"
-MAX_LINES=100
-
-CONFIG_PATH="/data/data/com.termux/files/home/servicemanager/configuration.yaml"
-MQTT_TOPIC="isg/install/$SERVICE_ID/status"
-
-exec > >(tee -a "$LOG_FILE") 2>&1
-# Trim to last 100 lines
-tail -n $MAX_LINES "$LOG_FILE" > "$LOG_FILE.tmp" && mv "$LOG_FILE.tmp" "$LOG_FILE"
-
-echo "[INFO] Installing Home Assistant v$HASS_VERSION..."
-
-# Load MQTT config
-if ! python3 -c "import yaml" 2>/dev/null; then
-  echo "[WARN] PyYAML not installed, using default MQTT config"
-  MQTT_HOST="127.0.0.1"
-  MQTT_PORT=1883
-  MQTT_USERNAME=""
-  MQTT_PASSWORD=""
-else
-  eval $(python3 -c "
-import yaml
-with open('$CONFIG_PATH') as f:
-    mqtt = yaml.safe_load(f).get('mqtt', {})
-    for k in ('host', 'port', 'username', 'password'):
-        v = mqtt.get(k, '')
-        print(f'MQTT_{k.upper()}=\"{v}\"')")
-fi
 
 mqtt_report() {
-  local status=$1
-  local extra=$2
-  mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" \
-    -t "$MQTT_TOPIC" -m "{\"service\":\"$SERVICE_ID\",\"status\":\"$status\",$extra\"timestamp\":$(date +%s)}" -r -q 1 >/dev/null 2>&1
+  local topic="$1"
+  local payload="$2"
+  mosquitto_pub -F "$SERVICE_DIR/configuration.yaml" -t "$topic" -m "$payload" || true
+  echo "[MQTT] $topic -> $payload" >> "$LOG_FILE"
 }
 
-mqtt_report installing ""
+log() {
+  echo "[$(date +%F %T)] $*" | tee -a "$LOG_FILE"
+}
+
+log "📦 Starting Home Assistant install: $HASS_VERSION"
+mqtt_report "isg/install/$SERVICE_ID/status" '{"status":"installing"}'
 
 proot-distro login "$PROOT_DISTRO" -- bash <<EOF
 set -e
 
-apt update && apt install -y ffmpeg libturbojpeg
+if [ -d /root/homeassistant ]; then
+  echo "[INFO] Existing installation found, uninstalling..."
+  exit 99
+fi
 
+apt update && apt install -y ffmpeg libturbojpeg
 python3 -m venv /root/homeassistant
 source /root/homeassistant/bin/activate
 pip install --upgrade pip
-pip install numpy pillow mutagen aiohttp==3.10.8 attrs==23.2.0 PyTurboJPEG
-pip install -U aiohttp
+pip install numpy mutagen pillow aiohttp_fast_zlib
+pip install aiohttp==3.10.8 attrs==23.2.0 PyTurboJPEG
 pip install homeassistant==${HASS_VERSION}
 
-nohup bash -c 'source /root/homeassistant/bin/activate && hass' > /root/hass_runtime.log 2>&1 &
-for i in \$(seq 1 90); do
-  sleep 5
-  nc -z 127.0.0.1 8123 && break
-done || exit 1
+# 首次启动测试（后台启动）
+hass &
+PID=\$!
 
-# Verify configuration
-source /root/homeassistant/bin/activate
-if ! hass --script check_config -c /root/.homeassistant >/root/check_config_result.txt 2>&1; then
-  echo "[ERROR] Configuration validation failed"
-  cat /root/check_config_result.txt
-  exit 2
+TRIES=0
+while (( TRIES < 90 )); do
+  if nc -z 127.0.0.1 8123; then
+    echo "[INFO] Home Assistant started successfully."
+    break
+  fi
+  sleep 10
+  TRIES=\$((TRIES+1))
+done
+
+if (( TRIES >= 90 )); then
+  echo "[ERROR] HA startup timed out."
+  kill -9 \$PID || true
+  exit 1
 fi
 
-pkill -f hass || true
+kill -9 \$PID
 
+# 压缩优化库
 pip install zlib-ng isal --no-binary :all:
 
-grep -q '^logger:' /root/.homeassistant/configuration.yaml || echo -e '\nlogger:\n  default: critical' >> /root/.homeassistant/configuration.yaml
-grep -q 'use_x_frame_options:' /root/.homeassistant/configuration.yaml || echo -e '\nhttp:\n  use_x_frame_options: false' >> /root/.homeassistant/configuration.yaml
+# 配置补丁
+CONFIG="/root/.homeassistant/configuration.yaml"
+grep -q '^logger:' "\$CONFIG" || echo -e '\nlogger:\n  default: critical' >> "\$CONFIG"
+grep -q 'use_x_frame_options:' "\$CONFIG" || echo -e '\nhttp:\n  use_x_frame_options: false' >> "\$CONFIG"
+
+VERSION=\$(hass --version)
+echo "[INFO] Installed Home Assistant version: \$VERSION"
 EOF
 
-EXIT_CODE=$?
-if [[ \$EXIT_CODE -eq 0 ]]; then
-  VERSION_STR=$(proot-distro login "$PROOT_DISTRO" -- bash -c "source /root/homeassistant/bin/activate && hass --version")
-  echo "[OK] Installation succeeded. Version: \$VERSION_STR"
-  mqtt_report success "\"version\":\"\$VERSION_STR\",\"log\":\"$LOG_FILE\"," 
-elif [[ \$EXIT_CODE -eq 2 ]]; then
-  echo "[ERROR] Installation failed due to invalid configuration"
-  mqtt_report failed "\"error\":\"config_invalid\",\"message\":\"Configuration check failed.\",\"log\":\"$LOG_FILE\"," 
-  exit 2
-else
-  echo "[ERROR] Installation failed with exit code \$EXIT_CODE"
-  mqtt_report failed "\"error\":\"install_failed\",\"message\":\"Installation process failed.\",\"log\":\"$LOG_FILE\"," 
-  exit \$EXIT_CODE
+if [ \$? -eq 99 ]; then
+  bash "$SERVICE_DIR/uninstall.sh"
+  exec bash "$SERVICE_DIR/install.sh"
+elif [ \$? -ne 0 ]; then
+  mqtt_report "isg/install/$SERVICE_ID/status" '{"status":"failed","message":"Installation failed inside container."}'
+  exit 1
 fi
+
+mqtt_report "isg/install/$SERVICE_ID/status" "\$(cat <<EOP
+{
+  \"service\": \"$SERVICE_ID\",
+  \"status\": \"success\",
+  \"version\": \"$HASS_VERSION\",
+  \"log\": \"$LOG_FILE\",
+  \"timestamp\": $(date +%s)
+}
+EOP
+)"
+
+log "✅ Install complete: Home Assistant $HASS_VERSION"
+exit 0
