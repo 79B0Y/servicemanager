@@ -2,71 +2,75 @@
 set -euo pipefail
 
 SERVICE_ID="hass"
-SERVICE_DIR="/data/data/com.termux/files/home/servicemanager/$SERVICE_ID"
-LOG_DIR="$SERVICE_DIR/logs"
-LOG_FILE="$LOG_DIR/backup.log"
 PROOT_DISTRO="${PROOT_DISTRO:-ubuntu}"
-HA_DIR="/root/.homeassistant"
+HA_DIR="${HA_DIR:-/root/.homeassistant}"
 BACKUP_DIR="${BACKUP_DIR:-/sdcard/isgbackup/$SERVICE_ID}"
 KEEP_BACKUPS="${KEEP_BACKUPS:-3}"
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-BACKUP_FILE="$BACKUP_DIR/homeassistant_backup_${TIMESTAMP}.tar.gz"
+SERVICE_DIR="/data/data/com.termux/files/home/servicemanager/$SERVICE_ID"
+CONFIG_FILE="/data/data/com.termux/files/home/servicemanager/configuration.yaml"
+LOG_FILE="$SERVICE_DIR/logs/backup.log"
+TS=$(date +%Y%m%d-%H%M%S)
+DST="$BACKUP_DIR/homeassistant_backup_${TS}.tar.gz"
+START_TIME=$(date +%s)
 
-mkdir -p "$LOG_DIR" "$BACKUP_DIR"
+mkdir -p "$BACKUP_DIR"
+mkdir -p "$(dirname "$LOG_FILE")"
+
+load_mqtt_conf() {
+  MQTT_HOST=$(grep -Po '^[[:space:]]*host:[[:space:]]*\K.*' "$CONFIG_FILE" | head -n1)
+  MQTT_PORT=$(grep -Po '^[[:space:]]*port:[[:space:]]*\K.*' "$CONFIG_FILE" | head -n1)
+  MQTT_USER=$(grep -Po '^[[:space:]]*username:[[:space:]]*\K.*' "$CONFIG_FILE" | head -n1)
+  MQTT_PASS=$(grep -Po '^[[:space:]]*password:[[:space:]]*\K.*' "$CONFIG_FILE" | head -n1)
+}
 
 mqtt_report() {
-  local topic="$1"
-  local payload="$2"
-  mosquitto_pub -F "$SERVICE_DIR/configuration.yaml" -t "$topic" -m "$payload" || true
+  local topic="$1" payload="$2"
+  load_mqtt_conf
+  mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" -u "$MQTT_USER" -P "$MQTT_PASS" -t "$topic" -m "$payload" || true
   echo "[MQTT] $topic -> $payload" >> "$LOG_FILE"
 }
 
 log() {
-  echo "[$(date +%F\ %T)] $*" | tee -a "$LOG_FILE"
+  echo "[$(date '+%F %T')] $*" | tee -a "$LOG_FILE"
 }
 
-log "🔍 Checking Home Assistant running state..."
-if ! bash "$SERVICE_DIR/status.sh" --quiet; then
-  log "⚠️ Home Assistant is not running. Abort backup."
-  mqtt_report "isg/backup/$SERVICE_ID/status" '{"status":"failed","message":"Home Assistant not running."}'
-  exit 1
-fi
-
-mqtt_report "isg/status/$SERVICE_ID/status" '{"status":"running"}'
-log "📦 Starting backup..."
+log "📦 Starting backup: $DST"
 mqtt_report "isg/backup/$SERVICE_ID/status" '{"status":"backuping"}'
 
-START=$(date +%s)
-proot-distro login "$PROOT_DISTRO" -- bash -c "tar -czf \"$BACKUP_FILE\" -C /root .homeassistant"
-END=$(date +%s)
-
-if [ ! -f "$BACKUP_FILE" ]; then
-  log "❌ Backup failed: file not created"
-  mqtt_report "isg/backup/$SERVICE_ID/status" '{"status":"failed","message":"Backup file creation failed."}'
+if ! bash "$SERVICE_DIR/status.sh" --quiet; then
+  log "❌ Home Assistant not running. Abort."
+  mqtt_report "isg/backup/$SERVICE_ID/status" '{"status":"failed","message":"Service not running."}'
   exit 1
 fi
 
-SIZE_KB=$(du -k "$BACKUP_FILE" | cut -f1)
-DURATION=$((END - START))
-
-mqtt_report "isg/backup/$SERVICE_ID/status" "$(cat <<EOF
+if proot-distro login "$PROOT_DISTRO" -- bash -c "tar -czf \"$DST\" -C \"$(dirname $HA_DIR)\" \"$(basename $HA_DIR)\""; then
+  END_TIME=$(date +%s)
+  SIZE_KB=$(du -k "$DST" | awk '{print $1}')
+  DURATION=$((END_TIME - START_TIME))
+  mqtt_report "isg/backup/$SERVICE_ID/status" "$(cat <<EOF
 {
-  \"service\": \"$SERVICE_ID\",
-  \"status\": \"success\",
-  \"file\": \"$BACKUP_FILE\",
-  \"size_kb\": $SIZE_KB,
-  \"duration\": $DURATION,
-  \"log\": \"$LOG_FILE\",
-  \"timestamp\": $(date +%s)
+  "service": "$SERVICE_ID",
+  "status": "success",
+  "file": "$DST",
+  "size_kb": $SIZE_KB,
+  "duration": $DURATION,
+  "log": "$LOG_FILE",
+  "timestamp": $END_TIME
 }
 EOF
 )"
+  log "✅ Backup complete: $DST ($SIZE_KB KB, ${DURATION}s)"
+else
+  mqtt_report "isg/backup/$SERVICE_ID/status" '{"status":"failed","message":"Tar failed inside container."}'
+  log "❌ tar command failed in proot"
+  exit 1
+fi
 
-log "✅ Backup complete: $BACKUP_FILE ($SIZE_KB KB, $DURATION s)"
-
-# 自动清理旧备份
-log "🧹 Cleaning old backups..."
-ls -tp "$BACKUP_DIR"/homeassistant_backup_*.tar.gz 2>/dev/null | grep -v '/$' | tail -n +$((KEEP_BACKUPS + 1)) | xargs -r rm -f
-log "🧽 Cleanup done."
+# 清理旧备份
+log "🧹 Checking old backups..."
+ls -1t "$BACKUP_DIR"/homeassistant_backup_*.tar.gz 2>/dev/null | tail -n +$((KEEP_BACKUPS + 1)) | while read -r old; do
+  log "🗑️ Removing old backup: $old"
+  rm -f "$old"
+done
 
 exit 0
