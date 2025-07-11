@@ -32,6 +32,7 @@ if ! bash "$SERVICE_DIR/status.sh" --quiet; then
   exit 1
 fi
 
+mqtt_report "isg/status/$SERVICE_ID/status" '{"status":"running"}'
 log "📦 Starting backup..."
 mqtt_report "isg/backup/$SERVICE_ID/status" '{"status":"backuping"}'
 
