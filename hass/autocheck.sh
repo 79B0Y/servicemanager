@@ -3,7 +3,7 @@ set -euo pipefail
 
 SERVICE_ID="hass"
 SERVICE_DIR="/data/data/com.termux/files/home/servicemanager/$SERVICE_ID"
-LOCK_FILE="/var/lock/${SERVICE_ID}_autocheck.lock"
+LOCK_FILE="$SERVICE_DIR/.lock_autocheck"
 VERSION_FILE="$SERVICE_DIR/VERSION.yaml"
 DISABLED_FLAG="$SERVICE_DIR/.disabled"
 LOG_DIR="$SERVICE_DIR/logs"
