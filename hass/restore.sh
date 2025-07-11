@@ -1,78 +1,78 @@
 #!/data/data/com.termux/files/usr/bin/bash
-
-# restore.sh - Restore Home Assistant configuration from backup
-# Path: /data/data/com.termux/files/home/servicemanager/hass/restore.sh
+set -euo pipefail
 
 SERVICE_ID="hass"
+SERVICE_DIR="/data/data/com.termux/files/home/servicemanager/$SERVICE_ID"
+LOG_FILE="$SERVICE_DIR/logs/restore.log"
+BACKUP_DIR="${BACKUP_DIR:-/sdcard/isgbackup/$SERVICE_ID}"
+RESTORE_FILE="${RESTORE_FILE:-}"  # 可选外部传入
 PROOT_DISTRO="${PROOT_DISTRO:-ubuntu}"
-BACKUP_DIR="/sdcard/isgbackup/$SERVICE_ID"
-LOG_DIR="$BACKUP_DIR/logs"
-mkdir -p "$LOG_DIR"
-LOG_FILE="$LOG_DIR/restore.log"
-MAX_LINES=100
-CONFIG_PATH="/data/data/com.termux/files/home/servicemanager/configuration.yaml"
-MQTT_TOPIC="isg/restore/$SERVICE_ID/status"
 
-exec > >(tee -a "$LOG_FILE") 2>&1
-tail -n $MAX_LINES "$LOG_FILE" > "$LOG_FILE.tmp" && mv "$LOG_FILE.tmp" "$LOG_FILE"
-
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-INPUT_BACKUP="$1"
-
-# Load MQTT config
-if ! python3 -c "import yaml" 2>/dev/null; then
-  echo "[WARN] PyYAML not installed, using default MQTT config"
-  MQTT_HOST="127.0.0.1"
-  MQTT_PORT=1883
-  MQTT_USERNAME=""
-  MQTT_PASSWORD=""
-else
-  eval $(python3 -c "
-import yaml
-with open('$CONFIG_PATH') as f:
-    mqtt = yaml.safe_load(f).get('mqtt', {})
-    for k in ('host', 'port', 'username', 'password'):
-        v = mqtt.get(k, '')
-        print(f'MQTT_{k.upper()}=\"{v}\"')")
-fi
+mkdir -p "$(dirname "$LOG_FILE")"
 
 mqtt_report() {
-  local status=$1
-  local extra=$2
-  mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" \
-    -t "$MQTT_TOPIC" -m "{\"service\":\"$SERVICE_ID\",\"status\":\"$status\",$extra\"timestamp\":$(date +%s)}" -r -q 1 >/dev/null 2>&1
+  local topic="$1"
+  local payload="$2"
+  mosquitto_pub -F "$SERVICE_DIR/configuration.yaml" -t "$topic" -m "$payload" || true
+  echo "[MQTT] $topic -> $payload" >> "$LOG_FILE"
 }
 
-mqtt_report restoring ""
+log() {
+  echo "[$(date +%F\ %T)] $*" | tee -a "$LOG_FILE"
+}
 
-# Stop service
-bash ./stop.sh
+log "🧪 Start restore process"
+mqtt_report "isg/restore/$SERVICE_ID/status" '{"status":"running"}'
+mqtt_report "isg/restore/$SERVICE_ID/status" '{"status":"restoring"}'
 
-# Determine backup file
-if [[ -n "$INPUT_BACKUP" && -f "$BACKUP_DIR/$INPUT_BACKUP" ]]; then
-  FILE="$BACKUP_DIR/$INPUT_BACKUP"
-elif FILE=$(ls -t "$BACKUP_DIR"/homeassistant_backup_*.tar.gz 2>/dev/null | head -n1); then
-  echo "[INFO] Using latest backup: $FILE"
-elif [[ -f "$BACKUP_DIR/homeassistant_original.tar.gz" ]]; then
-  FILE="$BACKUP_DIR/homeassistant_original.tar.gz"
-  echo "[INFO] Using original image backup: $FILE"
-else
-  echo "[ERROR] No backup file found"
-  mqtt_report failed "\"error\":\"no_backup\",\"message\":\"No backup file available to restore.\",\"log\":\"$LOG_FILE\"," 
+# Step 1: 备份当前数据
+log "📦 Backing up current data..."
+bash "$SERVICE_DIR/backup.sh" || log "⚠️ Backup failed before restore, continuing..."
+
+# Step 2: 确定还原文件
+if [ -z "$RESTORE_FILE" ]; then
+  RESTORE_FILE=$(ls -t "$BACKUP_DIR"/homeassistant_backup_*.tar.gz 2>/dev/null | head -n 1 || true)
+fi
+
+if [ ! -f "$RESTORE_FILE" ]; then
+  log "❌ No backup file found to restore."
+  mqtt_report "isg/restore/$SERVICE_ID/status" '{"status":"failed","message":"No backup file found."}'
   exit 1
 fi
 
-# Restore
-proot-distro login "$PROOT_DISTRO" -- bash -c "\
-  rm -rf /root/.homeassistant && \
-  mkdir -p /root/.homeassistant && \
-  tar -xzf '$FILE' -C /root"
-
-if [[ $? -ne 0 ]]; then
-  echo "[ERROR] Restore failed"
-  mqtt_report failed "\"error\":\"tar_failed\",\"message\":\"Failed to extract backup file.\",\"log\":\"$LOG_FILE\"," 
-  exit 1
+EXT="${RESTORE_FILE##*.}"
+if [ "$EXT" != "gz" ]; then
+  log "📦 Detected non-tar.gz format, attempting to re-compress"
+  TMP_DIR="/tmp/restore_$SERVICE_ID"
+  rm -rf "$TMP_DIR" && mkdir -p "$TMP_DIR"
+  unzip "$RESTORE_FILE" -d "$TMP_DIR"
+  RESTORE_FILE="$BACKUP_DIR/recompressed_$(date +%s).tar.gz"
+  tar -czf "$RESTORE_FILE" -C "$TMP_DIR" .
+  rm -rf "$TMP_DIR"
 fi
 
-bash ./start.sh
-mqtt_report success "\"file\":\"$FILE\",\"log\":\"$LOG_FILE\","
+log "🛑 Stopping service before restore..."
+bash "$SERVICE_DIR/stop.sh" || log "⚠️ Stop failed, continuing..."
+
+log "🧹 Cleaning old config..."
+proot-distro login "$PROOT_DISTRO" -- rm -rf /root/.homeassistant
+
+log "📦 Restoring from $RESTORE_FILE..."
+proot-distro login "$PROOT_DISTRO" -- tar -xzf "$RESTORE_FILE" -C /root
+
+log "🚀 Restarting service..."
+bash "$SERVICE_DIR/start.sh"
+
+mqtt_report "isg/restore/$SERVICE_ID/status" "$(cat <<EOF
+{
+  \"service\": \"$SERVICE_ID\",
+  \"status\": \"success\",
+  \"file\": \"$RESTORE_FILE\",
+  \"log\": \"$LOG_FILE\",
+  \"timestamp\": $(date +%s)
+}
+EOF
+)"
+
+log "✅ Restore completed"
+exit 0
