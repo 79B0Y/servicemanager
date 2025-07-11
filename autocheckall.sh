@@ -12,12 +12,16 @@ log_error() { echo "[ERROR] $1"; }
 mqtt_report() {
   local topic="$1"
   local payload="$2"
-  mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" -t "$topic" -m "$payload"
+  mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" \
+    -t "$topic" -m "$payload" \
+    ${MQTT_USER:+-u "$MQTT_USER"} ${MQTT_PASS:+-P "$MQTT_PASS"}
 }
 
 load_mqtt_config() {
-  MQTT_HOST=$(grep -A2 '^mqtt:' "$MQTT_CONFIG" | grep host | awk '{print $2}')
-  MQTT_PORT=$(grep -A2 '^mqtt:' "$MQTT_CONFIG" | grep port | awk '{print $2}')
+  MQTT_HOST=$(grep -A5 '^mqtt:' "$MQTT_CONFIG" | grep 'host:' | awk '{print $2}')
+  MQTT_PORT=$(grep -A5 '^mqtt:' "$MQTT_CONFIG" | grep 'port:' | awk '{print $2}')
+  MQTT_USER=$(grep -A5 '^mqtt:' "$MQTT_CONFIG" | grep 'username:' | awk '{print $2}')
+  MQTT_PASS=$(grep -A5 '^mqtt:' "$MQTT_CONFIG" | grep 'password:' | awk '{print $2}')
 }
 
 # ========== 主体开始 ==========
