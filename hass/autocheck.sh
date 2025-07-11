@@ -48,6 +48,46 @@ flock -n 200 || {
 log "🔍 Start Home Assistant autocheck"
 mqtt_report "isg/autocheck/$SERVICE_ID/status" '{"status":"config"}'
 
+# Report performance regardless of .disabled
+HASS_PID=$(pgrep -f '[h]omeassistant' || true)
+if [ -n "$HASS_PID" ]; then
+  CPU_USAGE=$(top -b -n 1 -p "$HASS_PID" | grep "$HASS_PID" | awk '{print $9}')
+  MEM_USAGE=$(top -b -n 1 -p "$HASS_PID" | grep "$HASS_PID" | awk '{print $10}')
+  RSS_KB=$(awk '/VmRSS/ {print $2}' /proc/$HASS_PID/status 2>/dev/null)
+  UPTIME=$(ps -o etime= -p "$HASS_PID" | xargs)
+  PERF_JSON=$(cat <<EOF
+{
+  "service": "$SERVICE_ID",
+  "status": "running",
+  "pid": $HASS_PID,
+  "cpu": "$CPU_USAGE",
+  "mem": "$MEM_USAGE",
+  "rss_kb": "$RSS_KB",
+  "uptime": "$UPTIME",
+  "timestamp": $(date +%s)
+}
+EOF
+  )
+else
+  PERF_JSON=$(cat <<EOF
+{
+  "service": "$SERVICE_ID",
+  "status": "stopped",
+  "pid": null,
+  "cpu": null,
+  "mem": null,
+  "rss_kb": null,
+  "uptime": null,
+  "timestamp": $(date +%s)
+}
+EOF
+  )
+fi
+PERF_SINGLE_LINE=$(echo "$PERF_JSON" | tr -d '
+' | tr -s ' ')
+mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" -u "$MQTT_USER" -P "$MQTT_PASS" -t "isg/status/$SERVICE_ID/performance" -m "$PERF_SINGLE_LINE" || true
+log "📊 Reported performance: $PERF_JSON"
+
 if [ -f "$DISABLED_FLAG" ]; then
   log "⚠️ Detected .disabled flag, skip autocheck"
   mqtt_report "isg/autocheck/$SERVICE_ID/status" '{"status":"disabled","message":"Autocheck disabled manually."}'
@@ -122,11 +162,25 @@ if [ -n "$HASS_PID" ]; then
 }
 EOF
   )
-  mqtt_report "isg/status/$SERVICE_ID/performance" "$PERF_JSON"
-  log "📊 Reported performance: $PERF_JSON"
 else
-  log "⚠️ Unable to get performance info: PID not found"
+  PERF_JSON=$(cat <<EOF
+{
+  "service": "$SERVICE_ID",
+  "status": "stopped",
+  "pid": null,
+  "cpu": null,
+  "mem": null,
+  "rss_kb": null,
+  "uptime": null,
+  "timestamp": $(date +%s)
+}
+EOF
+  )
 fi
+PERF_SINGLE_LINE=$(echo "$PERF_JSON" | tr -d '
+' | tr -s ' ')
+mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" -u "$MQTT_USER" -P "$MQTT_PASS" -t "isg/status/$SERVICE_ID/performance" -m "$PERF_SINGLE_LINE" || true
+log "📊 Reported performance: $PERF_JSON"
 
 if [ -n "$TARGET_VERSION" ]; then
   NOW=$(date +%s)
