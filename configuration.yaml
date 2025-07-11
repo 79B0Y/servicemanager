@@ -1,37 +1,14 @@
-# configuration.yaml
-# 公共配置文件，提供给各服务脚本读取
-
 mqtt:
   host: 127.0.0.1
   port: 1883
   username: admin
   password: admin
-  keepalive: 60
-  client_id_prefix: isg_
-  # 支持使用指定连接时间、不同服务的 client_id 前缀
+  tls: false      # 如使用 wss/mqtts，请设为 true，并配置 cert_path
+  cert_path: ""   # PEM 证书路径，如 /data/data/com.termux/files/home/cert.pem
+  keepalive: 30   # 可选，单位秒
+  debug: false    # true = 打印所有发布内容日志
 
-logging:
-  level: info
-  mqtt_error_to_file: true
-  log_dir: /sdcard/isgbackup/logs
-
-update:
-  registry_url: https://dl.linknlink.com/services/servicelist.json
-  check_interval: 3600  # 每一小时检查一次
-
-paths:
-  backup_root: /sdcard/isgbackup
-  log_root: /sdcard/isgbackup/logs
-  service_root: /data/data/com.termux/files/home/servicemanager
-
-mqtt_topics:
-  status_prefix: isg/status
-  install_prefix: isg/install
-  backup_prefix: isg/backup
-  restore_prefix: isg/restore
-  run_prefix: isg/run
-  update_prefix: isg/update
-  autocheck_prefix: isg/autocheck
-
-# 可扩展: 每个服务都可以从这里读取公共配置
-# 如有特殊配置需要覆盖，可在服务内部处理
+global:
+  log_dir: /data/data/com.termux/files/home/servicemanager/logs
+  skip_services: ""    # 可选，逗号分隔，如 hass,mysqld
+  update_interval: 21600  # 秒，自动更新最小间隔
