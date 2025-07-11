@@ -1,64 +1,58 @@
 #!/data/data/com.termux/files/usr/bin/bash
-
-# uninstall.sh - 卸载 Home Assistant，清理环境并上报状态
-# 路径: /data/data/com.termux/files/home/servicemanager/hass/uninstall.sh
+set -euo pipefail
 
 SERVICE_ID="hass"
+SERVICE_DIR="/data/data/com.termux/files/home/servicemanager/$SERVICE_ID"
+LOG_FILE="$SERVICE_DIR/logs/uninstall.log"
+DISABLED_FLAG="$SERVICE_DIR/.disabled"
 PROOT_DISTRO="${PROOT_DISTRO:-ubuntu}"
-BACKUP_DIR="/sdcard/isgbackup/$SERVICE_ID"
-CONFIG_PATH="/data/data/com.termux/files/home/servicemanager/configuration.yaml"
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-LOG_FILE="$BACKUP_DIR/uninstall_${TIMESTAMP}.log"
-MQTT_TOPIC="isg/install/$SERVICE_ID/status"
 
-mkdir -p "$BACKUP_DIR"
-exec > >(tee -a "$LOG_FILE") 2>&1
-
-echo "[INFO] 开始卸载 Home Assistant..."
-
-# 加载 MQTT 配置
-eval $(python3 -c "
-import yaml
-with open('$CONFIG_PATH') as f:
-  mqtt = yaml.safe_load(f).get('mqtt', {})
-  print(f'MQTT_HOST={mqtt.get('host','127.0.0.1')}')
-  print(f'MQTT_PORT={mqtt.get('port',1883)}')
-  print(f'MQTT_USER={mqtt.get('username','')}')
-  print(f'MQTT_PASS={mqtt.get('password','')}')
-")
+mkdir -p "$(dirname "$LOG_FILE")"
 
 mqtt_report() {
-  local status=$1
-  mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" -u "$MQTT_USER" -P "$MQTT_PASS" \
-    -t "$MQTT_TOPIC" -m "{\"service\":\"$SERVICE_ID\",\"status\":\"$status\",\"log\":\"$LOG_FILE\",\"timestamp\":$(date +%s)}" -r -q 1 >/dev/null 2>&1
+  local topic="$1"
+  local payload="$2"
+  mosquitto_pub -F "$SERVICE_DIR/configuration.yaml" -t "$topic" -m "$payload" || true
+  echo "[MQTT] $topic -> $payload" >> "$LOG_FILE"
 }
 
-mqtt_report uninstalling
+log() {
+  echo "[$(date +%F %T)] $*" | tee -a "$LOG_FILE"
+}
 
-# 确保服务已停止
-if bash ./status.sh --quiet; then
-  echo "[INFO] 服务正在运行，调用 stop.sh 停止..."
-  bash ./stop.sh
-else
-  echo "[INFO] 服务已处于停止状态"
-fi
+log "🧹 Begin uninstall of Home Assistant"
+mqtt_report "isg/install/$SERVICE_ID/status" '{"status":"uninstalling"}'
 
-# 删除虚拟环境与配置
-echo "[INFO] 删除虚拟环境与配置目录..."
-proot-distro login "$PROOT_DISTRO" -- bash -c "rm -rf /root/homeassistant /root/.homeassistant"
+# 1. 停止服务
+bash "$SERVICE_DIR/stop.sh" || log "⚠️ stop.sh returned non‑zero, continuing with uninstall."
 
-if [[ $? -eq 0 ]]; then
-  echo "[OK] 已删除容器内安装目录"
-else
-  echo "[ERROR] 删除目录失败"
-  mqtt_report failed
+# 2. 进入容器并卸载
+if ! proot-distro login "$PROOT_DISTRO" -- bash -c "\
+  set -e ; \
+  if [ -d /root/homeassistant ]; then \
+    source /root/homeassistant/bin/activate && pip uninstall -y homeassistant || true ; \
+    rm -rf /root/homeassistant ; \
+  fi ; \
+  rm -rf /root/.homeassistant ; \
+"; then
+  mqtt_report "isg/install/$SERVICE_ID/status" '{"status":"failed","message":"Uninstall failed inside container."}'
+  log "❌ Uninstall failed inside container."
   exit 1
 fi
 
-# 标记为禁用，防止 autocheck 自动重装
-touch .disabled
+# 3. 创建 .disabled，防止自动重装/重启
+touch "$DISABLED_FLAG"
 
-mqtt_report uninstalled
+mqtt_report "isg/install/$SERVICE_ID/status" "$(cat <<EOS
+{
+  \"service\": \"$SERVICE_ID\",
+  \"status\": \"uninstalled\",
+  \"message\": \"Home Assistant completely removed.\",
+  \"log\": \"$LOG_FILE\",
+  \"timestamp\": $(date +%s)
+}
+EOS
+)"
 
-echo "[DONE] 卸载完成。日志写入 $LOG_FILE"
+log "✅ Uninstall complete. .disabled flag set."
 exit 0
