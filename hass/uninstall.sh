@@ -2,57 +2,61 @@
 set -euo pipefail
 
 SERVICE_ID="hass"
+PROOT_DISTRO="ubuntu"
 SERVICE_DIR="/data/data/com.termux/files/home/servicemanager/$SERVICE_ID"
+CONFIG_FILE="/data/data/com.termux/files/home/servicemanager/configuration.yaml"
 LOG_FILE="$SERVICE_DIR/logs/uninstall.log"
 DISABLED_FLAG="$SERVICE_DIR/.disabled"
-PROOT_DISTRO="${PROOT_DISTRO:-ubuntu}"
 
 mkdir -p "$(dirname "$LOG_FILE")"
 
+load_mqtt_conf() {
+  MQTT_HOST=$(grep -Po '^[[:space:]]*host:[[:space:]]*\K.*' "$CONFIG_FILE" | head -n1)
+  MQTT_PORT=$(grep -Po '^[[:space:]]*port:[[:space:]]*\K.*' "$CONFIG_FILE" | head -n1)
+  MQTT_USER=$(grep -Po '^[[:space:]]*username:[[:space:]]*\K.*' "$CONFIG_FILE" | head -n1)
+  MQTT_PASS=$(grep -Po '^[[:space:]]*password:[[:space:]]*\K.*' "$CONFIG_FILE" | head -n1)
+}
+
 mqtt_report() {
-  local topic="$1"
-  local payload="$2"
-  mosquitto_pub -F "$SERVICE_DIR/configuration.yaml" -t "$topic" -m "$payload" || true
+  local topic="$1" payload="$2"
+  load_mqtt_conf
+  mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" -u "$MQTT_USER" -P "$MQTT_PASS" -t "$topic" -m "$payload" || true
   echo "[MQTT] $topic -> $payload" >> "$LOG_FILE"
 }
 
 log() {
-  echo "[$(date +%F %T)] $*" | tee -a "$LOG_FILE"
+  echo "[$(date '+%F %T')] $*" | tee -a "$LOG_FILE"
 }
 
-log "🧹 Begin uninstall of Home Assistant"
+log "🧹 Uninstalling Home Assistant..."
 mqtt_report "isg/install/$SERVICE_ID/status" '{"status":"uninstalling"}'
 
-# 1. 停止服务
-bash "$SERVICE_DIR/stop.sh" || log "⚠️ stop.sh returned non‑zero, continuing with uninstall."
+bash "$SERVICE_DIR/stop.sh" || true
 
-# 2. 进入容器并卸载
-if ! proot-distro login "$PROOT_DISTRO" -- bash -c "\
-  set -e ; \
-  if [ -d /root/homeassistant ]; then \
-    source /root/homeassistant/bin/activate && pip uninstall -y homeassistant || true ; \
-    rm -rf /root/homeassistant ; \
-  fi ; \
-  rm -rf /root/.homeassistant ; \
-"; then
-  mqtt_report "isg/install/$SERVICE_ID/status" '{"status":"failed","message":"Uninstall failed inside container."}'
-  log "❌ Uninstall failed inside container."
-  exit 1
-fi
+proot-distro login "$PROOT_DISTRO" << 'EOF'
+log_step() {
+  echo -e "\n[STEP] \$1"
+}
 
-# 3. 创建 .disabled，防止自动重装/重启
+log_step "🔸 Killing Home Assistant if running"
+HASS_PID=\$(pgrep -f "homeassistant/bin/python3 .*hass") && kill "\$HASS_PID" || echo "[INFO] No HA process running"
+
+log_step "🔸 Uninstalling Home Assistant via pip"
+source /root/homeassistant/bin/activate && pip uninstall -y homeassistant || echo "[INFO] Not installed"
+
+log_step "🔸 Removing virtualenv /root/homeassistant"
+rm -rf /root/homeassistant
+
+log_step "🔸 Removing config /root/.homeassistant"
+rm -rf /root/.homeassistant
+
+log_step "✅ Uninstall complete"
+EOF
+
+log "🔒 Creating .disabled flag"
 touch "$DISABLED_FLAG"
 
-mqtt_report "isg/install/$SERVICE_ID/status" "$(cat <<EOS
-{
-  \"service\": \"$SERVICE_ID\",
-  \"status\": \"uninstalled\",
-  \"message\": \"Home Assistant completely removed.\",
-  \"log\": \"$LOG_FILE\",
-  \"timestamp\": $(date +%s)
-}
-EOS
-)"
+log "📢 MQTT reporting uninstall success"
+mqtt_report "isg/install/$SERVICE_ID/status" '{"status":"uninstalled","message":"Home Assistant completely removed."}'
 
-log "✅ Uninstall complete. .disabled flag set."
 exit 0
