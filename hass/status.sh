@@ -11,10 +11,10 @@ mkdir -p "$(dirname "$LOG_FILE")"
 
 # ------------ MQTT config helper ------------
 load_mqtt_conf() {
-  MQTT_HOST=$(grep -E "^\s*host:" "$CONFIG_FILE" | awk '{print $2}')
-  MQTT_PORT=$(grep -E "^\s*port:" "$CONFIG_FILE" | awk '{print $2}')
-  MQTT_USER=$(grep -E "^\s*username:" "$CONFIG_FILE" | awk '{print $2}')
-  MQTT_PASS=$(grep -E "^\s*password:" "$CONFIG_FILE" | awk '{print $2}')
+  MQTT_HOST=$(grep -E "^[[:space:]]*host:" "$CONFIG_FILE" | awk '{print $2}')
+  MQTT_PORT=$(grep -E "^[[:space:]]*port:" "$CONFIG_FILE" | awk '{print $2}')
+  MQTT_USER=$(grep -E "^[[:space:]]*username:" "$CONFIG_FILE" | awk '{print $2}')
+  MQTT_PASS=$(grep -E "^[[:space:]]*password:" "$CONFIG_FILE" | awk '{print $2}')
 }
 
 mqtt_report() {
@@ -26,7 +26,7 @@ mqtt_report() {
 }
 
 log() {
-  echo "[$(date "+%F %T")] $*" | tee -a "$LOG_FILE"
+  echo "[$(date '+%F %T')] $*" | tee -a "$LOG_FILE"
 }
 
 PID=$(pgrep -f '[h]omeassistant' || true)
@@ -49,11 +49,14 @@ fi
 case "${1:-}" in
   --json)
     echo "{\"status\":\"$STATUS\",\"pid\":\"$PID\",\"runtime\":\"$RUNTIME\"}"
-    exit $EXIT;;
+    exit $EXIT
+    ;;
   --quiet)
-    exit $EXIT;;
-  *) ;;
-fi
+    exit $EXIT
+    ;;
+  *)
+    ;;
+esac
 
 TS=$(date +%s)
 if [ "$STATUS" = "running" ]; then
