@@ -1,81 +1,61 @@
 #!/data/data/com.termux/files/usr/bin/bash
+set -euo pipefail
 
-# status.sh - 检查 Home Assistant 当前状态并通过 MQTT 上报
-# 路径: /data/data/com.termux/files/home/servicemanager/hass/status.sh
-
-CONFIG_PATH="/data/data/com.termux/files/home/servicemanager/configuration.yaml"
 SERVICE_ID="hass"
+SERVICE_DIR="/data/data/com.termux/files/home/servicemanager/$SERVICE_ID"
+LOG_FILE="$SERVICE_DIR/logs/status.log"
+PORT=8123
+
+mkdir -p "$(dirname "$LOG_FILE")"
+
 MQTT_TOPIC="isg/status/$SERVICE_ID/status"
 
-# 加载 MQTT 配置（兼容未安装 PyYAML 的情况）
-if ! python3 -c "import yaml" 2>/dev/null; then
-  echo "[WARN] PyYAML 未安装，使用默认 MQTT 配置"
-  MQTT_HOST="127.0.0.1"
-  MQTT_PORT=1883
-  MQTT_USERNAME=""
-  MQTT_PASSWORD=""
-else
-  eval $(python3 -c "
-import yaml
-with open('$CONFIG_PATH') as f:
-    mqtt = yaml.safe_load(f).get('mqtt', {})
-    for k in ('host', 'port', 'username', 'password'):
-        v = mqtt.get(k, '')
-        print(f'MQTT_{k.upper()}=\"{v}\"')")
-fi
-
-get_runtime_minutes() {
-  local pid=$1
-  local etime=$(ps -o etimes= -p "$pid" 2>/dev/null)
-  echo "${etime:-0}"
+mqtt_report() {
+  local topic="$1"
+  local payload="$2"
+  mosquitto_pub -F "$SERVICE_DIR/configuration.yaml" -t "$topic" -m "$payload" || true
+  echo "[MQTT] $topic -> $payload" >> "$LOG_FILE"
 }
 
-report_status() {
-  local status=$1
-  local pid=$2
-  local runtime=$3
-  local port_ok=$4
-  local payload="{\"service\":\"$SERVICE_ID\",\"status\":\"$status\",\"pid\":$pid,\"runtime_min\":$runtime,\"port_ok\":$port_ok,\"timestamp\":$(date +%s)}"
-  echo "[DEBUG] MQTT Payload: $payload"
-  mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" \
-    -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" \
-    -t "$MQTT_TOPIC" -m "$payload" -r -q 1 >/dev/null 2>&1
+log() {
+  echo "[$(date +%F %T)] $*" | tee -a "$LOG_FILE"
 }
 
-quiet=0
-json=0
-for arg in "$@"; do
-  [[ "$arg" == "--quiet" ]] && quiet=1
-  [[ "$arg" == "--json" ]] && json=1
+PID=$(pgrep -f '[h]omeassistant' || true)
 
-done
-
-pid=$(pgrep -f "[h]omeassistant")
-if [[ -n "$pid" ]]; then
-  runtime=$(get_runtime_minutes $pid)
-  if nc -z 127.0.0.1 8123 >/dev/null 2>&1; then
-    status="running"
-    code=0
-    port_ok=true
+if [ -n "$PID" ]; then
+  RUNTIME=$(ps -o etime= -p "$PID" | xargs)
+  if nc -z 127.0.0.1 $PORT >/dev/null 2>&1; then
+    STATUS="running"
+    EXIT_CODE=0
   else
-    status="starting"
-    code=2
-    port_ok=false
+    STATUS="starting"
+    EXIT_CODE=2
   fi
 else
-  status="stopped"
-  code=1
-  pid=0
-  runtime=0
-  port_ok=false
+  STATUS="stopped"
+  EXIT_CODE=1
 fi
 
-report_status "$status" "$pid" "$runtime" "$port_ok"
-
-if [[ $json -eq 1 ]]; then
-  echo "{\"status\":\"$status\",\"pid\":$pid,\"runtime\":${runtime} mins}"
-elif [[ $quiet -eq 0 ]]; then
-  echo "$status"
+# 处理输出选项
+if [[ "${1:-}" == "--json" ]]; then
+  echo "{\"status\":\"$STATUS\",\"pid\":\"$PID\",\"runtime\":\"$RUNTIME\"}"
+  exit $EXIT_CODE
+elif [[ "${1:-}" == "--quiet" ]]; then
+  exit $EXIT_CODE
 fi
 
-exit $code
+# 默认输出 + MQTT 上报
+TIMESTAMP=$(date +%s)
+if [ "$STATUS" = "running" ]; then
+  mqtt_report "$MQTT_TOPIC" "{\"service\":\"$SERVICE_ID\",\"status\":\"running\",\"pid\":$PID,\"runtime\":\"$RUNTIME\",\"port\":true,\"timestamp\":$TIMESTAMP}"
+  log "✅ Home Assistant is running (PID=$PID, uptime=$RUNTIME)"
+elif [ "$STATUS" = "starting" ]; then
+  mqtt_report "$MQTT_TOPIC" "{\"service\":\"$SERVICE_ID\",\"status\":\"starting\",\"pid\":$PID,\"runtime\":\"$RUNTIME\",\"port\":false,\"timestamp\":$TIMESTAMP}"
+  log "⏳ Home Assistant process exists but port not ready (PID=$PID)"
+else
+  mqtt_report "$MQTT_TOPIC" "{\"service\":\"$SERVICE_ID\",\"status\":\"stopped\",\"message\":\"Home Assistant is not running.\",\"timestamp\":$TIMESTAMP}"
+  log "🛑 Home Assistant is not running."
+fi
+
+exit $EXIT_CODE
