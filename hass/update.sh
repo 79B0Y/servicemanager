@@ -61,6 +61,11 @@ mqtt_report "isg/update/$SERVICE_ID/status" \
 proot-distro login "$PROOT_DISTRO" << EOF
 # ----------  容器内脚本开始 ----------
 set -euo pipefail
+
+# 把外部的值显式带进容器，哪怕是空字符串也能避免 set -u 报错
+export EXTRA_PIP_PKGS="${EXTRA_PIP_PKGS:-}"
+export TARGET_VERSION="$TARGET_VERSION"
+
 source /root/homeassistant/bin/activate
 
 python -m ensurepip --upgrade 2>&1 | tee /tmp/update_step_ensurepip.log
