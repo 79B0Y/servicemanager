@@ -33,7 +33,7 @@ mqtt_report "isg/install/$SERVICE_ID/status" '{"status":"uninstalling"}'
 
 bash "$SERVICE_DIR/stop.sh" || true
 
-proot-distro login "$PROOT_DISTRO" << 'EOF'
+proot-distro login "$PROOT_DISTRO" << EOF
 log_step() {
   echo -e "\n[STEP] \$1"
 }
