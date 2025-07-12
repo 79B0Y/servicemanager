@@ -119,11 +119,11 @@ DURATION=$((END_TIME - START_TIME))
 if [ "$INSTALLED_VERSION" = "$HASS_VERSION" ]; then
   mqtt_report "isg/install/$SERVICE_ID/status" "$(cat <<EOF
 {
-  \"service\": \"home_assistant\",
-  \"status\": \"success\",
-  \"version\": \"$INSTALLED_VERSION\",
-  \"log\": \"$LOG_FILE\",
-  \"timestamp\": $END_TIME
+  "service": "home_assistant",
+  "status": "success",
+  "version": "$INSTALLED_VERSION",
+  "log": "$LOG_FILE",
+  "timestamp": $END_TIME
 }
 EOF
 )"
