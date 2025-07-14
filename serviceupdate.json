@@ -1,0 +1,34 @@
+{
+  "generated": "2025-07-13T12:00:00Z",
+  "services": [
+    {
+      "id": "hass",
+      "display_name": "Home Assistant Core",
+      "enabled": true,
+      "current_script_version": "1.3.2",
+      "latest_script_version": "1.4.0",
+      "latest_script_package_url": "https://dl.linknlink.com/services/hass-scripts-1.4.0.tar.gz",
+      "latest_script_package_sha256": "abc123def456...",
+      "current_ha_version": "2025.5.3",
+      "latest_ha_version": "2025.7.1",
+      "upgrade_dependencies": [
+        "click==8.1.7",
+      ],
+      "notes": "Support for new MQTT schema and stability fixes."
+    },
+    {
+      "id": "zigbee2mqtt",
+      "display_name": "Zigbee2MQTT",
+      "enabled": false,
+      "current_script_version": "1.0.0",
+      "latest_script_version": "1.1.0",
+      "latest_script_package_url": "https://dl.linknlink.com/services/zigbee2mqtt-scripts-1.1.0.tar.gz",
+      "latest_script_package_sha256": "def789abc456...",
+      "current_service_version": "2.5.1",
+      "latest_service_version": "2.5.1",
+      "upgrade_dependencies": [
+      ],
+      "notes": "Improved Zigbee adapter support."
+    }
+  ]
+}
