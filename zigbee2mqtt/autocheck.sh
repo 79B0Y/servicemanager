@@ -54,22 +54,26 @@ UPGRADE_DEPS=$(get_upgrade_dependencies)
 # -----------------------------------------------------------------------------
 # 获取各脚本状态
 # -----------------------------------------------------------------------------
-INSTALL_STATUS=$(get_install_status)
+RUN_STATUS=$(get_improved_run_status)
+INSTALL_STATUS=$(get_improved_install_status)
+BACKUP_STATUS=$(get_improved_backup_status)
+UPDATE_STATUS=$(get_improved_update_status)
+RESTORE_STATUS=$(get_improved_restore_status)
 UPDATE_INFO=$(get_update_info)
 
-# 检查各脚本运行状态
-INSTALL_SCRIPT_STATUS=$(get_script_status "install.sh")
-UPDATE_SCRIPT_STATUS=$(get_script_status "update.sh")
-BACKUP_SCRIPT_STATUS=$(get_script_status "backup.sh")
-RESTORE_SCRIPT_STATUS=$(get_script_status "restore.sh")
-UNINSTALL_SCRIPT_STATUS=$(get_script_status "uninstall.sh")
+log "status check results:"
+log "  run: $RUN_STATUS"
+log "  install: $INSTALL_STATUS"
+log "  backup: $BACKUP_STATUS"
+log "  update: $UPDATE_STATUS"
+log "  restore: $RESTORE_STATUS"
 
 # -----------------------------------------------------------------------------
 # 检查是否被禁用
 # -----------------------------------------------------------------------------
 if [ -f "$DISABLED_FLAG" ]; then
     CONFIG_INFO=$(get_config_info)
-    mqtt_report "isg/autocheck/$SERVICE_ID/status" "{\"status\":\"disabled\",\"run\":\"disabled\",\"config\":$CONFIG_INFO,\"install\":\"$INSTALL_SCRIPT_STATUS\",\"backup\":\"$BACKUP_SCRIPT_STATUS\",\"restore\":\"$RESTORE_SCRIPT_STATUS\",\"update\":\"$UPDATE_SCRIPT_STATUS\",\"current_version\":\"$Z2M_VERSION\",\"latest_version\":\"$LATEST_Z2M_VERSION\",\"update_info\":\"$UPDATE_INFO\",\"message\":\"service is disabled\",\"timestamp\":$NOW}"
+    mqtt_report "isg/autocheck/$SERVICE_ID/status" "{\"status\":\"disabled\",\"run\":\"disabled\",\"config\":$CONFIG_INFO,\"install\":\"$INSTALL_STATUS\",\"backup\":\"$BACKUP_STATUS\",\"restore\":\"$RESTORE_STATUS\",\"update\":\"$UPDATE_STATUS\",\"current_version\":\"$Z2M_VERSION\",\"latest_version\":\"$LATEST_Z2M_VERSION\",\"update_info\":\"$UPDATE_INFO\",\"message\":\"service is disabled\",\"timestamp\":$NOW}"
     RESULT_STATUS="disabled"
     exit 0
 fi
@@ -77,16 +81,16 @@ fi
 # -----------------------------------------------------------------------------
 # 检查服务状态并尝试恢复
 # -----------------------------------------------------------------------------
-RUN_STATUS="failed"
-if ! bash "$SERVICE_DIR/status.sh" --quiet; then
+if [ "$RUN_STATUS" = "stopped" ]; then
     log "zigbee2mqtt not running, attempting to start"
     for i in $(seq 1 $MAX_TRIES); do
         bash "$SERVICE_DIR/start.sh"
         sleep $RETRY_INTERVAL
-        if bash "$SERVICE_DIR/status.sh" --quiet; then
+        NEW_RUN_STATUS=$(get_improved_run_status)
+        if [ "$NEW_RUN_STATUS" = "running" ]; then
             log "service recovered on attempt $i"
             mqtt_report "isg/autocheck/$SERVICE_ID/status" "{\"status\":\"recovered\",\"message\":\"service recovered after restart attempts\",\"timestamp\":$(date +%s)}"
-            RUN_STATUS="success"
+            RUN_STATUS="running"
             break
         fi
         [ $i -eq $MAX_TRIES ] && {
@@ -94,8 +98,6 @@ if ! bash "$SERVICE_DIR/status.sh" --quiet; then
             RUN_STATUS="failed"
         }
     done
-else
-    RUN_STATUS="success"
 fi
 
 # -----------------------------------------------------------------------------
@@ -103,12 +105,18 @@ fi
 # -----------------------------------------------------------------------------
 Z2M_PID=$(get_z2m_pid || echo "")
 if [ -n "$Z2M_PID" ]; then
-    Z2M_UPTIME=$(ps -o etimes= -p "$Z2M_PID" 2>/dev/null || echo 0)
+    Z2M_UPTIME=$(ps -o etimes= -p "$Z2M_PID" 2>/dev/null | head -n1 | awk '{print $1}' || echo 0)
+    # 确保是数字，移除任何非数字字符
+    Z2M_UPTIME=$(echo "$Z2M_UPTIME" | tr -d '\n\r\t ' | grep -o '^[0-9]*' || echo 0)
+    Z2M_UPTIME=${Z2M_UPTIME:-0}
 else
     Z2M_UPTIME=0
 fi
 
-LAST_CHECK=$(cat "$LAST_CHECK_FILE" 2>/dev/null || echo 0)
+LAST_CHECK=$(cat "$LAST_CHECK_FILE" 2>/dev/null | head -n1 | tr -d '\n\r\t ' || echo 0)
+# 确保LAST_CHECK是数字
+LAST_CHECK=${LAST_CHECK:-0}
+
 if [ "$LAST_CHECK" -gt 0 ] && [ "$Z2M_UPTIME" -lt $((NOW - LAST_CHECK)) ]; then
     RESULT_STATUS="problem"
 fi
@@ -118,8 +126,11 @@ echo "$NOW" > "$LAST_CHECK_FILE"
 # 性能监控
 # -----------------------------------------------------------------------------
 if [ -n "$Z2M_PID" ]; then
-    CPU=$(top -b -n 1 -p "$Z2M_PID" | awk '/'"$Z2M_PID"'/ {print $9}' | head -n1 || echo "0.0")
-    MEM=$(top -b -n 1 -p "$Z2M_PID" | awk '/'"$Z2M_PID"'/ {print $10}' | head -n1 || echo "0.0")
+    CPU=$(top -b -n 1 -p "$Z2M_PID" 2>/dev/null | awk '/'"$Z2M_PID"'/ {print $9}' | head -n1)
+    MEM=$(top -b -n 1 -p "$Z2M_PID" 2>/dev/null | awk '/'"$Z2M_PID"'/ {print $10}' | head -n1)
+    # 确保是数字
+    CPU=${CPU:-0.0}
+    MEM=${MEM:-0.0}
 else
     CPU="0.0"
     MEM="0.0"
@@ -163,7 +174,7 @@ fi
 # -----------------------------------------------------------------------------
 # 获取配置信息和状态消息
 # -----------------------------------------------------------------------------
-CONFIG_INFO=$(get_config_info)
+CONFIG_INFO=$(get_config_info 2>/dev/null)
 STATUS_MESSAGE=$(generate_status_message "$RUN_STATUS")
 
 # -----------------------------------------------------------------------------
@@ -176,10 +187,10 @@ FINAL_MESSAGE="{"
 FINAL_MESSAGE="$FINAL_MESSAGE\"status\":\"$RESULT_STATUS\","
 FINAL_MESSAGE="$FINAL_MESSAGE\"run\":\"$RUN_STATUS\","
 FINAL_MESSAGE="$FINAL_MESSAGE\"config\":$CONFIG_INFO,"
-FINAL_MESSAGE="$FINAL_MESSAGE\"install\":\"$INSTALL_SCRIPT_STATUS\","
-FINAL_MESSAGE="$FINAL_MESSAGE\"backup\":\"$BACKUP_SCRIPT_STATUS\","
-FINAL_MESSAGE="$FINAL_MESSAGE\"restore\":\"$RESTORE_SCRIPT_STATUS\","
-FINAL_MESSAGE="$FINAL_MESSAGE\"update\":\"$UPDATE_SCRIPT_STATUS\","
+FINAL_MESSAGE="$FINAL_MESSAGE\"install\":\"$INSTALL_STATUS\","
+FINAL_MESSAGE="$FINAL_MESSAGE\"backup\":\"$BACKUP_STATUS\","
+FINAL_MESSAGE="$FINAL_MESSAGE\"restore\":\"$RESTORE_STATUS\","
+FINAL_MESSAGE="$FINAL_MESSAGE\"update\":\"$UPDATE_STATUS\","
 FINAL_MESSAGE="$FINAL_MESSAGE\"current_version\":\"$Z2M_VERSION\","
 FINAL_MESSAGE="$FINAL_MESSAGE\"latest_version\":\"$LATEST_Z2M_VERSION\","
 FINAL_MESSAGE="$FINAL_MESSAGE\"update_info\":\"$UPDATE_INFO\","
