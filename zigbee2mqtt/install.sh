@@ -180,6 +180,6 @@ END_TIME=$(date +%s)
 DURATION=$((END_TIME - START_TIME))
 
 log "zigbee2mqtt installation completed successfully in ${DURATION}s"
-mqtt_report "isg/install/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"success\",\"version\":\"$VERSION_STR\",\"duration\":$DURATION,\"timestamp\":$END_TIME}"
+mqtt_report "isg/install/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"installed\",\"version\":\"$VERSION_STR\",\"duration\":$DURATION,\"timestamp\":$END_TIME}"
 
 exit 0
