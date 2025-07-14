@@ -8,8 +8,7 @@ termux:
 proot_ubuntu:
   - apt update && apt install -y netcat jq unzip
   - apt install -y ffmpeg libturbojpeg  # HA 视频解码相关依赖
-  - apt install -y python3-venv python3-pip  # Python 环境
-
+  - pip3 install pyyaml  # proot_ubuntu 读取yaml文件
 proot_python_ha_evn:
   - numpy
   - mutagen
