@@ -235,14 +235,23 @@ generate_status_message() {
 # 辅助函数 - 获取配置信息 (JSON格式)
 # -----------------------------------------------------------------------------
 get_config_info() {
-    if proot-distro login "$PROOT_DISTRO" -- test -f "$Z2M_CONFIG_FILE"; then
-        local config_json=$(proot-distro login "$PROOT_DISTRO" -- python3 -c "
-import yaml
-import json
+    # 首先检查配置文件是否存在
+    if ! proot-distro login "$PROOT_DISTRO" -- test -f "$Z2M_CONFIG_FILE"; then
+        echo '{"error": "Config file not found"}'
+        return
+    fi
+    
+    # 尝试使用 Python3 + yaml 解析
+    local config_json=$(proot-distro login "$PROOT_DISTRO" -- python3 -c "
+import sys
 try:
+    import yaml
+    import json
+    
     with open('$Z2M_CONFIG_FILE', 'r') as f:
         config = yaml.safe_load(f)
     
+    # 提取关键配置信息
     result = {
         'base_topic': config.get('mqtt', {}).get('base_topic', 'zigbee2mqtt'),
         'password': config.get('mqtt', {}).get('password', ''),
@@ -253,13 +262,34 @@ try:
         'port': config.get('serial', {}).get('port', '')
     }
     print(json.dumps(result))
+    
+except ImportError as e:
+    print('{\"error\": \"yaml module not available\"}')
 except Exception as e:
-    print('{\"error\": \"Failed to parse config\"}')
-" 2>/dev/null || echo '{"error": "Config not accessible"}')
-        echo "$config_json"
-    else
-        echo '{"error": "Config file not found"}'
+    print('{\"error\": \"Failed to parse config: ' + str(e).replace('\"', '\\\\"') + '\"}')
+" 2>/dev/null)
+    
+    # 如果 Python 方法失败，尝试使用 shell 命令解析 YAML
+    if [ -z "$config_json" ] || [[ "$config_json" == *"error"* ]]; then
+        config_json=$(proot-distro login "$PROOT_DISTRO" -- bash -c "
+            if [ -f '$Z2M_CONFIG_FILE' ]; then
+                # 使用 grep 和 awk 提取关键配置
+                base_topic=\$(grep -A 10 '^mqtt:' '$Z2M_CONFIG_FILE' | grep 'base_topic:' | awk '{print \$2}' | tr -d '\"' || echo 'zigbee2mqtt')
+                password=\$(grep -A 10 '^mqtt:' '$Z2M_CONFIG_FILE' | grep 'password:' | awk '{print \$2}' | tr -d '\"' || echo '')
+                server=\$(grep -A 10 '^mqtt:' '$Z2M_CONFIG_FILE' | grep 'server:' | awk '{print \$2}' | tr -d '\"' || echo '')
+                user=\$(grep -A 10 '^mqtt:' '$Z2M_CONFIG_FILE' | grep 'user:' | awk '{print \$2}' | tr -d '\"' || echo '')
+                adapter=\$(grep -A 10 '^serial:' '$Z2M_CONFIG_FILE' | grep 'adapter:' | awk '{print \$2}' | tr -d '\"' || echo '')
+                baudrate=\$(grep -A 10 '^serial:' '$Z2M_CONFIG_FILE' | grep 'baudrate:' | awk '{print \$2}' | tr -d '\"' || echo '')
+                port=\$(grep -A 10 '^serial:' '$Z2M_CONFIG_FILE' | grep 'port:' | awk '{print \$2}' | tr -d '\"' || echo '')
+                
+                echo \"{\\\"base_topic\\\":\\\"\$base_topic\\\",\\\"password\\\":\\\"\$password\\\",\\\"server\\\":\\\"\$server\\\",\\\"user\\\":\\\"\$user\\\",\\\"adapter\\\":\\\"\$adapter\\\",\\\"baudrate\\\":\\\"\$baudrate\\\",\\\"port\\\":\\\"\$port\\\"}\"
+            else
+                echo '{\"error\": \"Config file not accessible\"}'
+            fi
+        " 2>/dev/null || echo '{"error": "Config not accessible"}')
     fi
+    
+    echo "$config_json"
 }
 
 # -----------------------------------------------------------------------------
@@ -328,8 +358,15 @@ get_update_info() {
 }
 
 # -----------------------------------------------------------------------------
-# 辅助函数 - 检查其他脚本运行状态
+# 辅助函数 - 检查容器可用性
 # -----------------------------------------------------------------------------
+check_proot_container() {
+    if ! proot-distro login "$PROOT_DISTRO" -- echo "test" >/dev/null 2>&1; then
+        log "proot container $PROOT_DISTRO not available"
+        return 1
+    fi
+    return 0
+}
 get_script_status() {
     local script_name="$1"
     local script_path="$SERVICE_DIR/$script_name"
