@@ -79,7 +79,7 @@ record_uninstall_history "SUCCESS"
 # 上报卸载成功
 # -----------------------------------------------------------------------------
 log "reporting uninstall success"
-mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"success\",\"message\":\"zigbee2mqtt completely removed\",\"timestamp\":$(date +%s)}"
+mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"uninstalled\",\"message\":\"zigbee2mqtt completely removed\",\"timestamp\":$(date +%s)}"
 
 log "zigbee2mqtt uninstallation completed"
 exit 0
