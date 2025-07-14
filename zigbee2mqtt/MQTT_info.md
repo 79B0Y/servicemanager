@@ -16,7 +16,7 @@
 | `isg/install/zigbee2mqtt/status` | `installing` | `{"status":"installing","message":"starting service for testing","timestamp":1234567890}` | 启动服务测试 |
 | `isg/install/zigbee2mqtt/status` | `installing` | `{"status":"installing","message":"waiting for service ready","timestamp":1234567890}` | 等待服务就绪 |
 | `isg/install/zigbee2mqtt/status` | `installing` | `{"status":"installing","message":"recording installation history","version":"2.5.1","timestamp":1234567890}` | 记录安装历史 |
-| `isg/install/zigbee2mqtt/status` | `success` | `{"service":"zigbee2mqtt","status":"success","version":"2.5.1","duration":120,"timestamp":1234567890}` | 安装成功 |
+| `isg/install/zigbee2mqtt/status` | `installed` | `{"service":"zigbee2mqtt","status":"installed","version":"2.5.1","duration":120,"timestamp":1234567890}` | 安装成功 |
 | `isg/install/zigbee2mqtt/status` | `failed` | `{"status":"failed","message":"failed to read serviceupdate.json","timestamp":1234567890}` | 读取依赖配置失败 |
 | `isg/install/zigbee2mqtt/status` | `failed` | `{"status":"failed","message":"dependency installation failed","dependencies":["nodejs","git"],"timestamp":1234567890}` | 依赖安装失败 |
 | `isg/install/zigbee2mqtt/status` | `failed` | `{"status":"failed","message":"service start timeout after installation","timeout":120,"timestamp":1234567890}` | 安装后启动超时 |
@@ -28,7 +28,7 @@
 | `isg/install/zigbee2mqtt/status` | `uninstalling` | `{"status":"uninstalling","message":"starting uninstall process","timestamp":1234567890}` | 开始卸载 |
 | `isg/install/zigbee2mqtt/status` | `uninstalling` | `{"status":"uninstalling","message":"stopping service","timestamp":1234567890}` | 停止服务 |
 | `isg/install/zigbee2mqtt/status` | `uninstalling` | `{"status":"uninstalling","message":"removing installation directory","timestamp":1234567890}` | 删除安装目录 |
-| `isg/install/zigbee2mqtt/status` | `success` | `{"status":"success","message":"zigbee2mqtt completely removed","timestamp":1234567890}` | 卸载完成 |
+| `isg/install/zigbee2mqtt/status` | `uninstalled` | `{"status":"uninstalled","message":"zigbee2mqtt completely removed","timestamp":1234567890}` | 卸载完成 |
 
 ## 3. 启动相关消息 (start.sh)
 
