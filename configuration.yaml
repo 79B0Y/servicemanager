@@ -1,0 +1,14 @@
+mqtt:
+  host: 127.0.0.1
+  port: 1883
+  username: admin
+  password: admin
+  tls: false      # 如使用 wss/mqtts，请设为 true，并配置 cert_path
+  cert_path: ""   # PEM 证书路径，如 /data/data/com.termux/files/home/cert.pem
+  keepalive: 30   # 可选，单位秒
+  debug: false    # true = 打印所有发布内容日志
+
+global:
+  log_dir: /data/data/com.termux/files/home/servicemanager/logs
+  skip_services: ""    # 可选，逗号分隔，如 hass,mysqld
+  update_interval: 21600  # 秒，自动更新最小间隔
