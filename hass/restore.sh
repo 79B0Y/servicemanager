@@ -1,129 +1,9 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
 # Home Assistant 还原脚本
-# 版本: v1.4.0
-# 功能: 还原备份文件或生成默认配置
-# =============================================================================
-
-set -euo pipefail
-
-# 加载统一路径定义
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/common_paths.sh" || {
-    echo "Error: Cannot load common paths"
-    exit 1
-}
-
-# 设置脚本特定的日志文件
-LOG_FILE="$LOG_FILE_RESTORE"
-
-# 确保必要目录存在
-ensure_directories
-
-# 确保配置目录存在
-proot-distro login "$PROOT_DISTRO" -- mkdir -p "$HA_CONFIG_DIR"
-
-START_TIME=$(date +%s)
-CUSTOM_BACKUP_FILE="${RESTORE_FILE:-}"
-
-# -----------------------------------------------------------------------------
-# 生成默认配置文件
-# -----------------------------------------------------------------------------
-generate_default_config() {
-    log "generating default Home Assistant configuration"
-    
-    # 获取 MQTT 配置
-    load_mqtt_conf
-    
-    # 生成基础配置文件
-    proot-distro login "$PROOT_DISTRO" -- bash -c "cat > $HA_CONFIG_DIR/configuration.yaml << 'EOF'
-# Loads default set of integrations. Do not remove.
-default_config:
-
-# Load frontend themes from the themes folder
-frontend:
-  themes: !include_dir_merge_named themes
-
-# Text to speech
-tts:
-  - platform: google_translate
-
-automation: !include automations.yaml
-script: !include scripts.yaml
-scene: !include scenes.yaml
-
-# HTTP configuration
-http:
-  use_x_frame_options: false
-
-# Logger configuration
-logger:
-  default: warning
-  logs:
-    homeassistant.core: info
-
-# Time zone configuration
-homeassistant:
-  name: Home
-  latitude: !secret latitude
-  longitude: !secret longitude
-  elevation: !secret elevation
-  unit_system: metric
-  time_zone: !secret time_zone
-  currency: CNY
-  country: CN
-EOF"
-
-    # 创建 secrets.yaml 文件
-    proot-distro login "$PROOT_DISTRO" -- bash -c "cat > $HA_CONFIG_DIR/secrets.yaml << 'EOF'
-# Use this file to store secrets like usernames and passwords.
-# Learn more at https://www.home-assistant.io/docs/configuration/secrets/
-latitude: 39.9042
-longitude: 116.4074
-elevation: 43
-time_zone: Asia/Shanghai
-EOF"
-
-    # 创建空的自动化文件
-    proot-distro login "$PROOT_DISTRO" -- bash -c "
-        echo '[]' > $HA_CONFIG_DIR/automations.yaml
-        echo '{}' > $HA_CONFIG_DIR/scripts.yaml
-        echo '[]' > $HA_CONFIG_DIR/scenes.yaml
-    "
-
-    log "default configuration generated successfully"
-}
-
-# -----------------------------------------------------------------------------
-# 确定恢复文件
-# -----------------------------------------------------------------------------
-if [ -n "$CUSTOM_BACKUP_FILE" ]; then
-    RESTORE_FILE="$CUSTOM_BACKUP_FILE"
-    if [ -f "$RESTORE_FILE" ]; then
-        log "using user specified file: $RESTORE_FILE"
-        METHOD="user_specified"
-    else
-        log "user specified file not found: $RESTORE_FILE"
-        mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"user specified file not found\",\"file\":\"$RESTORE_FILE\",\"timestamp\":$(date +%s)}"
-        exit 1
-    fi
-else
-    RESTORE_FILE=$(ls -1t "$BACKUP_DIR"/homeassistant_backup_*.tar.gz 2>/dev/null | head -n1 || true)
-    if [ -n "$RESTORE_FILE" ] && [ -f "$RESTORE_FILE" ]; then
-        log "using latest backup: $RESTORE_FILE"
-        METHOD="latest_backup"
-    else
-        RESTORE_FILE=""
-        METHOD="default_config"
-    fi
-fi
-
-#!/data/data/com.termux/files/usr/bin/bash
-# =============================================================================
-# Home Assistant 还原脚本
 # 版本: v1.4.1
 # 功能: 智能还原备份文件或生成默认配置
-# 优化: 增加智能判断逻辑
+# 优化: 增加智能判断逻辑 - 根据HA状态和备份文件情况智能决策
 # =============================================================================
 
 set -euo pipefail
@@ -312,6 +192,11 @@ perform_restore() {
         
         # 清理临时目录
         rm -rf "$temp_dir"
+        
+    elif [[ "$basename" != *.tar.gz ]]; then
+        log "unsupported file format: $ext"
+        mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"unsupported file format. only .tar.gz and .zip are supported\",\"file\":\"$basename\",\"timestamp\":$(date +%s)}"
+        return 1
     fi
     
     # 执行还原
@@ -359,7 +244,9 @@ log "starting intelligent Home Assistant restore process"
 HA_STATUS=$(check_ha_status)
 log "current Home Assistant status: $HA_STATUS"
 
+# =============================================================================
 # 场景1: 用户指定了备份文件
+# =============================================================================
 if [ -n "$CUSTOM_BACKUP_FILE" ]; then
     log "scenario 1: user specified backup file"
     
@@ -368,6 +255,7 @@ if [ -n "$CUSTOM_BACKUP_FILE" ]; then
         
         # 如果HA正在运行，先创建备份，然后停止服务
         if [ "$HA_STATUS" = "running" ]; then
+            log "Home Assistant is running, creating backup before restore"
             create_backup_before_restore
             bash "$SERVICE_DIR/stop.sh"
             sleep 5
@@ -386,7 +274,9 @@ if [ -n "$CUSTOM_BACKUP_FILE" ]; then
     fi
 fi
 
+# =============================================================================
 # 场景2: HA正在运行，没有指定备份文件
+# =============================================================================
 if [ "$HA_STATUS" = "running" ]; then
     log "scenario 2: Home Assistant is running, no backup file specified"
     
@@ -400,6 +290,7 @@ if [ "$HA_STATUS" = "running" ]; then
         # 创建当前状态的备份
         if bash "$SERVICE_DIR/backup.sh"; then
             log "backup created successfully, restore operation skipped"
+            exit 0
         else
             log "backup creation failed"
             mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"backup creation failed\",\"timestamp\":$(date +%s)}"
@@ -412,16 +303,18 @@ if [ "$HA_STATUS" = "running" ]; then
         # 创建初始备份
         if bash "$SERVICE_DIR/backup.sh"; then
             log "initial backup created successfully, restore operation skipped"
+            exit 0
         else
             log "initial backup creation failed"
             mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"initial backup creation failed\",\"timestamp\":$(date +%s)}"
             exit 1
         fi
     fi
-    exit 0
 fi
 
+# =============================================================================
 # 场景3: HA已停止，没有指定备份文件
+# =============================================================================
 log "scenario 3: Home Assistant is stopped, no backup file specified"
 
 # 优先级1: 查找最新的常规备份
