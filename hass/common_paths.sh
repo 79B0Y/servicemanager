@@ -188,8 +188,8 @@ get_upgrade_dependencies() {
 # 辅助函数 - 获取安装状态
 # -----------------------------------------------------------------------------
 get_install_status() {
-    if proot-distro login "$PROOT_DISTRO" -- test -d "$HA_VENV_DIR"; then
-        if proot-distro login "$PROOT_DISTRO" -- test -f "$HA_VENV_DIR/bin/hass"; then
+    if proot-distro login "$PROOT_DISTRO" -- bash -c "test -d '$HA_VENV_DIR'"; then
+        if proot-distro login "$PROOT_DISTRO" -- bash -c "test -f '$HA_VENV_DIR/bin/hass'"; then
             echo "success"
         else
             echo "failed"
@@ -229,7 +229,7 @@ generate_status_message() {
     local uptime_minutes=$(( uptime_seconds / 60 ))
     
     case "$run_status" in
-        ("running")
+        "running")
             if [ $uptime_minutes -lt 5 ]; then
                 echo "Home Assistant restarted $uptime_minutes minutes ago"
             elif [ $uptime_minutes -lt 60 ]; then
@@ -239,16 +239,16 @@ generate_status_message() {
                 echo "Home Assistant running for $uptime_hours hours"
             fi
             ;;
-        ("starting")
+        "starting")
             echo "Home Assistant is starting up"
             ;;
-        ("stopping")
+        "stopping")
             echo "Home Assistant is stopping"
             ;;
-        ("stopped")
+        "stopped")
             echo "Home Assistant is not running"
             ;;
-        ("failed")
+        "failed")
             echo "Home Assistant failed to start"
             ;;
         *)
@@ -261,38 +261,73 @@ generate_status_message() {
 # 辅助函数 - 获取配置信息 (JSON格式)
 # -----------------------------------------------------------------------------
 get_config_info() {
+    # 首先检查配置文件是否存在
     if ! proot-distro login "$PROOT_DISTRO" -- bash -c "test -f '$HA_CONFIG_DIR/configuration.yaml'" 2>/dev/null; then
         echo '{"error": "Config file not found"}'
         return
     fi
     
-    local config_json=$(proot-distro login "$PROOT_DISTRO" -- python3 -c "
-import sys
-try:
-    import yaml
-    import json
+    # 使用简化的文本解析方法
+    local config_json=$(proot-distro login "$PROOT_DISTRO" -- bash -c "
+cd '$HA_CONFIG_DIR'
+# 默认值
+http_port=8123
+db_url='default'
+log_level='info'
+timezone='Asia/Shanghai'
+name='Home'
+frontend_enabled=true
+
+# 从配置文件中提取信息
+if [ -f configuration.yaml ]; then
+    # 提取 HTTP 端口
+    port_line=\$(grep -E '^[[:space:]]*server_port[[:space:]]*:' configuration.yaml | head -n1)
+    if [ -n \"\$port_line\" ]; then
+        http_port=\$(echo \"\$port_line\" | sed 's/.*:[[:space:]]*//' | tr -d '[:space:]')
+    fi
     
-    with open('$HA_CONFIG_DIR/configuration.yaml', 'r') as f:
-        config = yaml.safe_load(f) or {}
+    # 检查是否有 default_config 或 frontend
+    if grep -qE '^[[:space:]]*(default_config|frontend)[[:space:]]*:' configuration.yaml; then
+        frontend_enabled=true
+    else
+        frontend_enabled=false
+    fi
     
-    result = {
-        'http_port': config.get('http', {}).get('server_port', 8123),
-        'db_url': config.get('recorder', {}).get('db_url', 'default'),
-        'log_level': config.get('logger', {}).get('default', 'info'),
-        'timezone': config.get('time_zone', 'unknown'),
-        'name': config.get('homeassistant', {}).get('name', 'Home'),
-        'frontend_enabled': 'frontend' in config
-    }
-    print(json.dumps(result))
+    # 提取时区
+    tz_line=\$(grep -E '^[[:space:]]*time_zone[[:space:]]*:' configuration.yaml | head -n1)
+    if [ -n \"\$tz_line\" ]; then
+        timezone=\$(echo \"\$tz_line\" | sed 's/.*:[[:space:]]*//' | tr -d '\"' | tr -d \"'\")
+    fi
     
-except ImportError:
-    print('{\"error\": \"yaml module not available\"}')
-except Exception as e:
-    print('{\"error\": \"Failed to parse config\"}')
+    # 提取名称
+    name_line=\$(grep -E '^[[:space:]]*name[[:space:]]*:' configuration.yaml | head -n1)
+    if [ -n \"\$name_line\" ]; then
+        name=\$(echo \"\$name_line\" | sed 's/.*:[[:space:]]*//' | tr -d '\"' | tr -d \"'\")
+    fi
+    
+    # 提取日志级别
+    log_line=\$(grep -A5 '^logger:' configuration.yaml | grep -E '^[[:space:]]*default[[:space:]]*:' | head -n1)
+    if [ -n \"\$log_line\" ]; then
+        log_level=\$(echo \"\$log_line\" | sed 's/.*:[[:space:]]*//' | tr -d '\"' | tr -d \"'\")
+    fi
+fi
+
+# 输出 JSON
+cat << JSON_EOF
+{
+  \"http_port\": \$http_port,
+  \"db_url\": \"\$db_url\",
+  \"log_level\": \"\$log_level\",
+  \"timezone\": \"\$timezone\",
+  \"name\": \"\$name\",
+  \"frontend_enabled\": \$frontend_enabled
+}
+JSON_EOF
 " 2>/dev/null)
     
-    if [ -z "$config_json" ] || [[ "$config_json" == *"error"* ]]; then
-        config_json='{"error": "Config not accessible"}'
+    # 如果解析失败，返回基本信息
+    if [ -z "$config_json" ] || ! echo "$config_json" | jq . >/dev/null 2>&1; then
+        config_json='{"http_port": 8123, "db_url": "default", "log_level": "info", "timezone": "Asia/Shanghai", "name": "Home", "frontend_enabled": true}'
     fi
     
     echo "$config_json"
@@ -377,8 +412,8 @@ get_script_status() {
             elif pgrep -f "$SERVICE_DIR/uninstall.sh" > /dev/null 2>&1; then
                 echo "uninstalling"
             else
-                if proot-distro login "$PROOT_DISTRO" -- test -d "$HA_VENV_DIR" && \
-                   proot-distro login "$PROOT_DISTRO" -- test -f "$HA_VENV_DIR/bin/hass"; then
+                if proot-distro login "$PROOT_DISTRO" -- bash -c "test -d '$HA_VENV_DIR'" && \
+                   proot-distro login "$PROOT_DISTRO" -- bash -c "test -f '$HA_VENV_DIR/bin/hass'"; then
                     echo "success"
                 else
                     echo "failed"
@@ -420,7 +455,7 @@ get_script_status() {
                         echo "never"
                     fi
                 else
-                    if proot-distro login "$PROOT_DISTRO" -- test -f "$HA_CONFIG_DIR/configuration.yaml"; then
+                    if proot-distro login "$PROOT_DISTRO" -- bash -c "test -f '$HA_CONFIG_DIR/configuration.yaml'"; then
                         echo "success"
                     else
                         echo "never"
@@ -504,8 +539,8 @@ get_improved_install_status() {
                 echo "uninstalled"
                 return
             elif echo "$last_install_line" | grep -q "INSTALL SUCCESS"; then
-                if proot-distro login "$PROOT_DISTRO" -- test -d "$HA_VENV_DIR" 2>/dev/null && \
-                   proot-distro login "$PROOT_DISTRO" -- test -f "$HA_VENV_DIR/bin/hass" 2>/dev/null; then
+                if proot-distro login "$PROOT_DISTRO" -- bash -c "test -d '$HA_VENV_DIR'" 2>/dev/null && \
+                   proot-distro login "$PROOT_DISTRO" -- bash -c "test -f '$HA_VENV_DIR/bin/hass'" 2>/dev/null; then
                     echo "success"
                 else
                     echo "uninstalled"
@@ -519,8 +554,8 @@ get_improved_install_status() {
     fi
     
     # 没有历史记录，检查实际安装状态
-    if proot-distro login "$PROOT_DISTRO" -- test -d "$HA_VENV_DIR" 2>/dev/null && \
-       proot-distro login "$PROOT_DISTRO" -- test -f "$HA_VENV_DIR/bin/hass" 2>/dev/null; then
+    if proot-distro login "$PROOT_DISTRO" -- bash -c "test -d '$HA_VENV_DIR'" 2>/dev/null && \
+       proot-distro login "$PROOT_DISTRO" -- bash -c "test -f '$HA_VENV_DIR/bin/hass'" 2>/dev/null; then
         echo "success"
     else
         echo "never"
@@ -600,14 +635,14 @@ get_improved_restore_status() {
         elif echo "$recent_log" | grep -q "restore.*failed\|failed.*restore"; then
             echo "failed"
         else
-            if proot-distro login "$PROOT_DISTRO" -- test -f "$HA_CONFIG_DIR/configuration.yaml"; then
+            if proot-distro login "$PROOT_DISTRO" -- bash -c "test -f '$HA_CONFIG_DIR/configuration.yaml'"; then
                 echo "success"
             else
                 echo "never"
             fi
         fi
     else
-        if proot-distro login "$PROOT_DISTRO" -- test -f "$HA_CONFIG_DIR/configuration.yaml"; then
+        if proot-distro login "$PROOT_DISTRO" -- bash -c "test -f '$HA_CONFIG_DIR/configuration.yaml'"; then
             echo "success"
         else
             echo "never"
