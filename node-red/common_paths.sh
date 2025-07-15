@@ -1,7 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
 # Node-RED 服务管理 - 统一路径定义和公共函数
-# 版本: v1.1.0
+# 版本: v1.0.0
 # 说明: 所有脚本应在开头引用这些路径定义，确保一致性
 # =============================================================================
 
@@ -33,7 +33,7 @@ VERSION_FILE="$SERVICE_DIR/VERSION"
 SERVICE_CONTROL_DIR="$TERMUX_VAR_DIR/service/$SERVICE_ID"
 CONTROL_FILE="$SERVICE_CONTROL_DIR/supervise/control"
 DOWN_FILE="$SERVICE_CONTROL_DIR/down"
-RUN_SCRIPT="$SERVICE_CONTROL_DIR/run"
+RUN_FILE="$SERVICE_CONTROL_DIR/run"
 
 # -----------------------------------------------------------------------------
 # 日志目录和文件
@@ -68,11 +68,11 @@ UPDATE_HISTORY_FILE="$BACKUP_DIR/.update_history"
 # -----------------------------------------------------------------------------
 # 容器内路径 (Proot Ubuntu)
 # -----------------------------------------------------------------------------
+NODE_RED_HOME="/root/.node-red"
 NODE_RED_GLOBAL_DIR="/root/.pnpm-global"
-NODE_RED_DATA_DIR="${NODE_RED_DATA_DIR:-/root/.node-red}"
+NODE_RED_DATA_DIR="${NODE_RED_DATA_DIR:-$NODE_RED_HOME}"
 NODE_RED_FLOWS_FILE="$NODE_RED_DATA_DIR/flows.json"
 NODE_RED_SETTINGS_FILE="$NODE_RED_DATA_DIR/settings.js"
-NODE_RED_PACKAGE_JSON="$NODE_RED_GLOBAL_DIR/global/5/node_modules/node-red/package.json"
 
 # -----------------------------------------------------------------------------
 # 临时文件路径
@@ -85,7 +85,7 @@ RESTORE_TEMP_DIR="$TERMUX_TMP_DIR/restore_temp_$$"
 # 网络和端口
 # -----------------------------------------------------------------------------
 NODE_RED_PORT="1880"
-HTTP_TIMEOUT="10"
+MQTT_TIMEOUT="10"
 
 # -----------------------------------------------------------------------------
 # 脚本参数和配置
@@ -146,8 +146,8 @@ get_node_red_pid() {
     local port_pid=$(netstat -tnlp 2>/dev/null | grep ":$NODE_RED_PORT " | awk '{print $7}' | cut -d'/' -f1 | head -n1)
     
     if [ -n "$port_pid" ] && [ "$port_pid" != "-" ]; then
-        local cmdline=$(cat /proc/$port_pid/cmdline 2>/dev/null | tr '\0' ' ')
-        if echo "$cmdline" | grep -q "node-red"; then
+        local cwd=$(ls -l /proc/$port_pid/cwd 2>/dev/null | grep -o 'node-red\|\.node-red' || true)
+        if [ -n "$cwd" ]; then
             echo "$port_pid"
             return 0
         fi
@@ -160,11 +160,7 @@ get_node_red_pid() {
 # 辅助函数 - 获取版本信息
 # -----------------------------------------------------------------------------
 get_current_version() {
-    if proot-distro login "$PROOT_DISTRO" -- test -f "$NODE_RED_PACKAGE_JSON"; then
-        proot-distro login "$PROOT_DISTRO" -- bash -c "cat $NODE_RED_PACKAGE_JSON | grep '\"version\"' | sed -E 's/.*\"version\": *\"([^\"]+)\".*/\1/'" 2>/dev/null || echo "unknown"
-    else
-        echo "unknown"
-    fi
+    proot-distro login "$PROOT_DISTRO" -- bash -c "cat ~/.pnpm-global/global/5/node_modules/node-red/package.json | grep '\"version\"' | sed -E 's/.*\"version\": *\"([^\"]+)\".*/\1/'" 2>/dev/null || echo "unknown"
 }
 
 get_latest_version() {
@@ -187,8 +183,12 @@ get_upgrade_dependencies() {
 # 辅助函数 - 获取安装状态
 # -----------------------------------------------------------------------------
 get_install_status() {
-    if proot-distro login "$PROOT_DISTRO" -- test -f "$NODE_RED_PACKAGE_JSON"; then
-        echo "success"
+    if proot-distro login "$PROOT_DISTRO" -- test -d "$NODE_RED_GLOBAL_DIR"; then
+        if proot-distro login "$PROOT_DISTRO" -- test -f "$NODE_RED_GLOBAL_DIR/global/5/node_modules/node-red/package.json"; then
+            echo "success"
+        else
+            echo "failed"
+        fi
     else
         echo "failed"
     fi
@@ -259,12 +259,12 @@ get_config_info() {
     
     local config_json=$(proot-distro login "$PROOT_DISTRO" -- bash -c "
         if [ -f '$NODE_RED_SETTINGS_FILE' ]; then
-            port=\$(grep -o 'uiPort.*[0-9]*' '$NODE_RED_SETTINGS_FILE' | grep -o '[0-9]*' || echo '1880')
-            httpAdminRoot=\$(grep -o 'httpAdminRoot.*[\"'\"'].*[\"'\"']' '$NODE_RED_SETTINGS_FILE' | cut -d'\"' -f2 || echo '/')
-            flowFile=\$(grep -o 'flowFile.*[\"'\"'].*[\"'\"']' '$NODE_RED_SETTINGS_FILE' | cut -d'\"' -f2 || echo 'flows.json')
-            userDir=\$(grep -o 'userDir.*[\"'\"'].*[\"'\"']' '$NODE_RED_SETTINGS_FILE' | cut -d'\"' -f2 || echo '/root/.node-red')
+            port=\$(grep -o 'uiPort:.*[0-9]*' '$NODE_RED_SETTINGS_FILE' | grep -o '[0-9]*' || echo '1880')
+            host=\$(grep -o 'uiHost:.*\"[^\"]*\"' '$NODE_RED_SETTINGS_FILE' | grep -o '\"[^\"]*\"' | tr -d '\"' || echo '127.0.0.1')
+            httpAdminRoot=\$(grep -o 'httpAdminRoot:.*\"[^\"]*\"' '$NODE_RED_SETTINGS_FILE' | grep -o '\"[^\"]*\"' | tr -d '\"' || echo '')
+            httpNodeRoot=\$(grep -o 'httpNodeRoot:.*\"[^\"]*\"' '$NODE_RED_SETTINGS_FILE' | grep -o '\"[^\"]*\"' | tr -d '\"' || echo '')
             
-            echo \"{\\\"port\\\":\\\"\$port\\\",\\\"httpAdminRoot\\\":\\\"\$httpAdminRoot\\\",\\\"flowFile\\\":\\\"\$flowFile\\\",\\\"userDir\\\":\\\"\$userDir\\\"}\"
+            echo \"{\\\"port\\\":\\\"\$port\\\",\\\"host\\\":\\\"\$host\\\",\\\"httpAdminRoot\\\":\\\"\$httpAdminRoot\\\",\\\"httpNodeRoot\\\":\\\"\$httpNodeRoot\\\"}\"
         else
             echo '{\"error\": \"Settings file not accessible\"}'
         fi
@@ -339,120 +339,21 @@ get_update_info() {
 }
 
 # -----------------------------------------------------------------------------
-# 辅助函数 - 检查各脚本的实际状态
-# -----------------------------------------------------------------------------
-get_script_status() {
-    local script_name="$1"
-    local script_path="$SERVICE_DIR/$script_name"
-    
-    case "$script_name" in
-        "install.sh")
-            if pgrep -f "$script_path" > /dev/null 2>&1; then
-                echo "installing"
-            elif pgrep -f "$SERVICE_DIR/uninstall.sh" > /dev/null 2>&1; then
-                echo "uninstalling"
-            else
-                if proot-distro login "$PROOT_DISTRO" -- test -f "$NODE_RED_PACKAGE_JSON"; then
-                    echo "success"
-                else
-                    echo "failed"
-                fi
-            fi
-            ;;
-        "backup.sh")
-            if pgrep -f "$script_path" > /dev/null 2>&1; then
-                echo "backuping"
-            else
-                local latest_backup=$(ls -1t "$BACKUP_DIR"/node-red_backup_*.tar.gz 2>/dev/null | head -n1 || true)
-                if [ -n "$latest_backup" ] && [ -f "$latest_backup" ]; then
-                    echo "success"
-                else
-                    if [ -f "$LOG_FILE_BACKUP" ] && [ -s "$LOG_FILE_BACKUP" ]; then
-                        if tail -10 "$LOG_FILE_BACKUP" 2>/dev/null | grep -q "backup skipped"; then
-                            echo "skipped"
-                        elif tail -10 "$LOG_FILE_BACKUP" 2>/dev/null | grep -q "backup completed"; then
-                            echo "success"
-                        elif tail -10 "$LOG_FILE_BACKUP" 2>/dev/null | grep -q "backup.*failed\|failed.*backup"; then
-                            echo "failed"
-                        else
-                            echo "never"
-                        fi
-                    else
-                        echo "never"
-                    fi
-                fi
-            fi
-            ;;
-        "restore.sh")
-            if pgrep -f "$script_path" > /dev/null 2>&1; then
-                echo "restoring"
-            else
-                if [ -f "$LOG_FILE_RESTORE" ] && [ -s "$LOG_FILE_RESTORE" ]; then
-                    if tail -10 "$LOG_FILE_RESTORE" 2>/dev/null | grep -q "restore.*complete\|configuration generated.*successfully"; then
-                        echo "success"
-                    elif tail -10 "$LOG_FILE_RESTORE" 2>/dev/null | grep -q "restore.*skipped\|backup.*skipped"; then
-                        echo "skipped"
-                    elif tail -10 "$LOG_FILE_RESTORE" 2>/dev/null | grep -q "restore.*failed\|failed.*restore"; then
-                        echo "failed"
-                    else
-                        echo "never"
-                    fi
-                else
-                    if proot-distro login "$PROOT_DISTRO" -- test -f "$NODE_RED_DATA_DIR"; then
-                        echo "success"
-                    else
-                        echo "never"
-                    fi
-                fi
-            fi
-            ;;
-        "update.sh")
-            if pgrep -f "$script_path" > /dev/null 2>&1; then
-                echo "updating"
-            else
-                if [ -f "$UPDATE_HISTORY_FILE" ] && [ -s "$UPDATE_HISTORY_FILE" ]; then
-                    local last_update_line=$(tail -n1 "$UPDATE_HISTORY_FILE" 2>/dev/null)
-                    if [ -n "$last_update_line" ]; then
-                        if echo "$last_update_line" | grep -q "SUCCESS"; then
-                            echo "success"
-                        elif echo "$last_update_line" | grep -q "FAILED"; then
-                            echo "failed"
-                        else
-                            echo "never"
-                        fi
-                    else
-                        echo "never"
-                    fi
-                else
-                    echo "never"
-                fi
-            fi
-            ;;
-        *)
-            echo "success"
-            ;;
-    esac
-}
-
-# -----------------------------------------------------------------------------
 # 改进的状态检查函数 - 用于autocheck.sh
 # -----------------------------------------------------------------------------
 
 # 改进的 RUN 状态检查
 get_improved_run_status() {
-    # 检查是否有 start.sh 进程在运行
     if pgrep -f "$SERVICE_DIR/start.sh" > /dev/null 2>&1; then
         echo "starting"
         return
     fi
     
-    # 检查是否有 stop.sh 进程在运行
     if pgrep -f "$SERVICE_DIR/stop.sh" > /dev/null 2>&1; then
         echo "stopping"
         return
     fi
     
-    # 调用 status.sh 检查实际运行状态
     if bash "$SERVICE_DIR/status.sh" --quiet; then
         echo "running"
     else
@@ -462,33 +363,27 @@ get_improved_run_status() {
 
 # 改进的 INSTALL 状态检查
 get_improved_install_status() {
-    # 检查是否有 install.sh 进程在运行
     if pgrep -f "$SERVICE_DIR/install.sh" > /dev/null 2>&1; then
         echo "installing"
         return
     fi
     
-    # 检查是否有 uninstall.sh 进程在运行
     if pgrep -f "$SERVICE_DIR/uninstall.sh" > /dev/null 2>&1; then
         echo "uninstalling"
         return
     fi
     
-    # 检查安装历史记录
     if [ -f "$INSTALL_HISTORY_FILE" ] && [ -s "$INSTALL_HISTORY_FILE" ]; then
-        # 读取最后一行安装记录
         local last_install_line=$(tail -n1 "$INSTALL_HISTORY_FILE" 2>/dev/null)
         if [ -n "$last_install_line" ]; then
-            # 优先检查卸载记录
             if echo "$last_install_line" | grep -q "UNINSTALL SUCCESS"; then
                 echo "uninstalled"
                 return
             elif echo "$last_install_line" | grep -q "INSTALL SUCCESS"; then
-                # 虽然历史记录说安装成功，但需要验证实际状态
-                if proot-distro login "$PROOT_DISTRO" -- test -f "$NODE_RED_PACKAGE_JSON" 2>/dev/null; then
+                if proot-distro login "$PROOT_DISTRO" -- test -f "$NODE_RED_GLOBAL_DIR/global/5/node_modules/node-red/package.json" 2>/dev/null; then
                     echo "success"
                 else
-                    echo "uninstalled"  # 历史说成功但实际不存在，说明被卸载了
+                    echo "uninstalled"
                 fi
                 return
             elif echo "$last_install_line" | grep -q "INSTALL FAILED"; then
@@ -498,8 +393,7 @@ get_improved_install_status() {
         fi
     fi
     
-    # 没有历史记录，检查实际安装状态
-    if proot-distro login "$PROOT_DISTRO" -- test -f "$NODE_RED_PACKAGE_JSON" 2>/dev/null; then
+    if proot-distro login "$PROOT_DISTRO" -- test -f "$NODE_RED_GLOBAL_DIR/global/5/node_modules/node-red/package.json" 2>/dev/null; then
         echo "success"
     else
         echo "never"
@@ -508,21 +402,16 @@ get_improved_install_status() {
 
 # 改进的 BACKUP 状态检查
 get_improved_backup_status() {
-    # 检查是否有 backup.sh 进程在运行
     if pgrep -f "$SERVICE_DIR/backup.sh" > /dev/null 2>&1; then
         echo "backuping"
         return
     fi
     
-    # 检查备份目录是否有备份文件
     local backup_files=$(ls -1 "$BACKUP_DIR"/node-red_backup_*.tar.gz 2>/dev/null | wc -l)
-    # 确保backup_files是数字
     backup_files=${backup_files:-0}
     
     if [ "$backup_files" -gt 0 ]; then
-        # 有备份文件，检查最近的备份状态
         if [ -f "$LOG_FILE_BACKUP" ] && [ -s "$LOG_FILE_BACKUP" ]; then
-            # 检查最近的日志记录
             local recent_log=$(tail -10 "$LOG_FILE_BACKUP" 2>/dev/null)
             if echo "$recent_log" | grep -q "backup skipped"; then
                 echo "skipped"
@@ -531,25 +420,23 @@ get_improved_backup_status() {
             elif echo "$recent_log" | grep -q "backup.*failed\|failed.*backup"; then
                 echo "failed"
             else
-                echo "success"  # 有备份文件默认认为成功
+                echo "success"
             fi
         else
-            echo "success"  # 有备份文件但无日志，默认成功
+            echo "success"
         fi
     else
-        echo "never"  # 没有备份文件
+        echo "never"
     fi
 }
 
 # 改进的 UPDATE 状态检查
 get_improved_update_status() {
-    # 检查是否有 update.sh 进程在运行
     if pgrep -f "$SERVICE_DIR/update.sh" > /dev/null 2>&1; then
         echo "updating"
         return
     fi
     
-    # 检查更新历史记录
     if [ -f "$UPDATE_HISTORY_FILE" ] && [ -s "$UPDATE_HISTORY_FILE" ]; then
         local last_update_line=$(tail -n1 "$UPDATE_HISTORY_FILE" 2>/dev/null)
         if [ -n "$last_update_line" ]; then
@@ -564,38 +451,34 @@ get_improved_update_status() {
             echo "never"
         fi
     else
-        echo "never"  # 没有更新历史记录
+        echo "never"
     fi
 }
 
 # 改进的 RESTORE 状态检查
 get_improved_restore_status() {
-    # 检查是否有 restore.sh 进程在运行
     if pgrep -f "$SERVICE_DIR/restore.sh" > /dev/null 2>&1; then
         echo "restoring"
         return
     fi
     
-    # 检查还原日志
     if [ -f "$LOG_FILE_RESTORE" ] && [ -s "$LOG_FILE_RESTORE" ]; then
         local recent_log=$(tail -10 "$LOG_FILE_RESTORE" 2>/dev/null)
-        if echo "$recent_log" | grep -q "restore.*complete\|configuration generated.*successfully"; then
+        if echo "$recent_log" | grep -q "restore.*complete\|flows restored.*successfully"; then
             echo "success"
         elif echo "$recent_log" | grep -q "restore.*skipped\|backup.*skipped"; then
             echo "skipped"
         elif echo "$recent_log" | grep -q "restore.*failed\|failed.*restore"; then
             echo "failed"
         else
-            # 如果有数据目录，认为还原成功
-            if proot-distro login "$PROOT_DISTRO" -- test -d "$NODE_RED_DATA_DIR"; then
+            if proot-distro login "$PROOT_DISTRO" -- test -f "$NODE_RED_FLOWS_FILE"; then
                 echo "success"
             else
                 echo "never"
             fi
         fi
     else
-        # 没有还原日志，检查数据目录
-        if proot-distro login "$PROOT_DISTRO" -- test -d "$NODE_RED_DATA_DIR"; then
+        if proot-distro login "$PROOT_DISTRO" -- test -f "$NODE_RED_FLOWS_FILE"; then
             echo "success"
         else
             echo "never"
