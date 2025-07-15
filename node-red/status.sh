@@ -1,8 +1,8 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
 # Node-RED 状态查询脚本
-# 版本: v1.1.0
-# 功能: 检查服务运行状态和 HTTP 接口可用性
+# 版本: v1.0.0
+# 功能: 检查服务运行状态和端口监听状态
 # =============================================================================
 
 set -euo pipefail
@@ -30,21 +30,12 @@ HTTP_STATUS="offline"
 if [ -n "$PID" ]; then
     RUNTIME=$(ps -o etime= -p "$PID" | xargs)
     
-    # 检查 HTTP 接口状态
-    if timeout "$HTTP_TIMEOUT" nc -z 127.0.0.1 "$NODE_RED_PORT" 2>/dev/null; then
-        # 尝试获取简单的 HTTP 响应
-        HTTP_RESPONSE=$(timeout "$HTTP_TIMEOUT" curl -s -I "http://127.0.0.1:$NODE_RED_PORT" 2>/dev/null | head -n1 || echo "")
-        if echo "$HTTP_RESPONSE" | grep -q "200\|302\|401"; then
-            HTTP_STATUS="online"
-            STATUS="running"
-            EXIT=0
-        else
-            HTTP_STATUS="starting"
-            STATUS="starting"
-            EXIT=2
-        fi
+    # 检查 HTTP 端口是否响应
+    if timeout 5 nc -z localhost "$NODE_RED_PORT" 2>/dev/null; then
+        HTTP_STATUS="online"
+        STATUS="running"
+        EXIT=0
     else
-        HTTP_STATUS="offline"
         STATUS="starting"
         EXIT=2
     fi
@@ -75,7 +66,7 @@ esac
 TS=$(date +%s)
 if [ "$STATUS" = "running" ]; then
     mqtt_report "isg/status/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"running\",\"pid\":$PID,\"runtime\":\"$RUNTIME\",\"http_status\":\"$HTTP_STATUS\",\"port\":\"$NODE_RED_PORT\",\"timestamp\":$TS}"
-    log "node-red running (PID=$PID, uptime=$RUNTIME, http=$HTTP_STATUS, port=$NODE_RED_PORT)"
+    log "node-red running (PID=$PID, uptime=$RUNTIME, port=$NODE_RED_PORT, http=$HTTP_STATUS)"
 elif [ "$STATUS" = "starting" ]; then
     mqtt_report "isg/status/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"starting\",\"pid\":$PID,\"runtime\":\"$RUNTIME\",\"http_status\":\"$HTTP_STATUS\",\"port\":\"$NODE_RED_PORT\",\"timestamp\":$TS}"
     log "node-red starting (PID=$PID, http=$HTTP_STATUS)"
