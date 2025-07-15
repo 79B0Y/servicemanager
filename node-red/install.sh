@@ -1,8 +1,8 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
 # Node-RED 安装脚本
-# 版本: v1.1.0
-# 功能: 安装 Node-RED 服务和相关依赖
+# 版本: v1.0.0
+# 功能: 在 proot Ubuntu 环境中安装 Node-RED
 # =============================================================================
 
 set -euo pipefail
@@ -33,41 +33,16 @@ mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"messa
 
 if [ ! -f "$SERVICEUPDATE_FILE" ]; then
     log "serviceupdate.json not found, using default dependencies"
-    DEPENDENCIES='["nodejs","npm","python3","python3-pip","build-essential","git"]'
+    DEPENDENCIES='["nodejs","npm"]'
 else
-    DEPENDENCIES=$(jq -c ".services[] | select(.id==\"$SERVICE_ID\") | .install_dependencies // [\"nodejs\",\"npm\",\"python3\",\"python3-pip\",\"build-essential\",\"git\"]" "$SERVICEUPDATE_FILE" 2>/dev/null || echo '["nodejs","npm","python3","python3-pip","build-essential","git"]')
+    DEPENDENCIES=$(jq -c ".services[] | select(.id==\"$SERVICE_ID\") | .install_dependencies // [\"nodejs\",\"npm\"]" "$SERVICEUPDATE_FILE" 2>/dev/null || echo '["nodejs","npm"]')
 fi
 
 # 转换为 bash 数组
-DEPS_ARRAY=($(echo "$DEPENDENCIES" | jq -r '.[]' 2>/dev/null || echo "nodejs npm python3 python3-pip build-essential git"))
+DEPS_ARRAY=($(echo "$DEPENDENCIES" | jq -r '.[]' 2>/dev/null || echo "nodejs npm"))
 
 log "installing required dependencies: ${DEPS_ARRAY[*]}"
 mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"installing required dependencies\",\"dependencies\":$DEPENDENCIES,\"timestamp\":$(date +%s)}"
-
-# -----------------------------------------------------------------------------
-# 安装 Termux 端的 node-red 包
-# -----------------------------------------------------------------------------
-log "installing node-red package for termux"
-mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"downloading and installing node-red termux package\",\"timestamp\":$(date +%s)}"
-
-# 下载并安装 Termux node-red 包
-cd /tmp
-if ! wget --no-check-certificate https://eucfg.linklinkiot.com/isg/node-red-2.2.1-3-g88e159e-88e159e-termux-arm.deb -O node-red.deb; then
-    log "failed to download node-red termux package"
-    mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"failed to download node-red termux package\",\"timestamp\":$(date +%s)}"
-    record_install_history "FAILED" "unknown"
-    exit 1
-fi
-
-if ! dpkg -i node-red.deb; then
-    log "failed to install node-red termux package"
-    mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"failed to install node-red termux package\",\"timestamp\":$(date +%s)}"
-    record_install_history "FAILED" "unknown"
-    exit 1
-fi
-
-rm -f node-red.deb
-log "node-red termux package installed successfully"
 
 # -----------------------------------------------------------------------------
 # 安装系统依赖
@@ -76,13 +51,25 @@ log "installing system dependencies in proot container"
 mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"installing system dependencies\",\"timestamp\":$(date +%s)}"
 
 if ! proot-distro login "$PROOT_DISTRO" -- bash -c "
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
     apt-get update
     apt-get install -y ${DEPS_ARRAY[*]}
-    # 安装 pnpm
-    npm install -g pnpm@latest
 "; then
     log "failed to install system dependencies"
     mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"dependency installation failed\",\"dependencies\":$DEPENDENCIES,\"timestamp\":$(date +%s)}"
+    record_install_history "FAILED" "unknown"
+    exit 1
+fi
+
+# -----------------------------------------------------------------------------
+# 安装 pnpm
+# -----------------------------------------------------------------------------
+log "installing pnpm package manager"
+mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"installing pnpm package manager\",\"timestamp\":$(date +%s)}"
+
+if ! proot-distro login "$PROOT_DISTRO" -- npm install -g pnpm; then
+    log "failed to install pnpm"
+    mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"pnpm installation failed\",\"timestamp\":$(date +%s)}"
     record_install_history "FAILED" "unknown"
     exit 1
 fi
@@ -96,17 +83,14 @@ if [ "$TARGET_VERSION" = "unknown" ]; then
 fi
 
 log "installing node-red version: $TARGET_VERSION"
-mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"installing node-red version $TARGET_VERSION\",\"timestamp\":$(date +%s)}"
 
 # -----------------------------------------------------------------------------
 # 安装 Node-RED
 # -----------------------------------------------------------------------------
-log "installing node-red via pnpm in proot container"
-mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"installing node-red application\",\"timestamp\":$(date +%s)}"
+log "installing node-red via pnpm"
+mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"installing node-red\",\"version\":\"$TARGET_VERSION\",\"timestamp\":$(date +%s)}"
 
-if ! proot-distro login "$PROOT_DISTRO" -- bash -c "
-    pnpm add -g node-red@$TARGET_VERSION
-"; then
+if ! proot-distro login "$PROOT_DISTRO" -- pnpm add -g "node-red@$TARGET_VERSION"; then
     log "failed to install node-red"
     mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"node-red installation failed\",\"timestamp\":$(date +%s)}"
     record_install_history "FAILED" "unknown"
@@ -118,37 +102,68 @@ VERSION_STR=$(get_current_version)
 log "node-red version: $VERSION_STR"
 
 # -----------------------------------------------------------------------------
-# 创建服务控制目录和脚本
+# 创建 Node-RED 服务运行脚本
 # -----------------------------------------------------------------------------
-log "creating service control directory and run script"
-mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"creating service control files\",\"timestamp\":$(date +%s)}"
+log "creating node-red service run script"
+mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"creating service run script\",\"timestamp\":$(date +%s)}"
 
-# 创建服务目录
-mkdir -p "$SERVICE_CONTROL_DIR/supervise"
-
-# 创建 run 脚本
-cat > "$RUN_SCRIPT" << 'EOF'
+cat > "$RUN_FILE" << 'EOF'
 #!/data/data/com.termux/files/usr/bin/sh
-exec proot-distro login ubuntu -- bash -c "cd /root && /root/.pnpm-global/bin/node-red" 2>&1
+exec proot-distro login ubuntu -- bash -c "
+export NODE_RED_HOME=/root/.node-red
+mkdir -p \$NODE_RED_HOME
+cd \$NODE_RED_HOME
+exec /root/.pnpm-global/bin/node-red
+" 2>&1
 EOF
 
-chmod +x "$RUN_SCRIPT"
+chmod +x "$RUN_FILE"
+log "created run script at $RUN_FILE"
 
-# 创建 down 文件（初始状态为停止）
+# -----------------------------------------------------------------------------
+# 初始化 Node-RED 目录和配置
+# -----------------------------------------------------------------------------
+log "initializing node-red configuration"
+mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"initializing configuration\",\"timestamp\":$(date +%s)}"
+
+proot-distro login "$PROOT_DISTRO" -- bash -c "
+export NODE_RED_HOME=/root/.node-red
+mkdir -p \$NODE_RED_HOME
+cd \$NODE_RED_HOME
+# 创建基本的 flows.json 文件
+echo '[]' > flows.json
+# 创建基本的 settings.js（如果不存在）
+if [ ! -f settings.js ]; then
+    cat > settings.js << 'SETTINGS_EOF'
+module.exports = {
+    uiPort: process.env.PORT || 1880,
+    uiHost: \"0.0.0.0\",
+    httpAdminRoot: false,
+    httpNodeRoot: \"/\",
+    functionGlobalContext: {},
+    exportGlobalContextKeys: false,
+    logging: {
+        console: {
+            level: \"info\",
+            metrics: false,
+            audit: false
+        }
+    },
+    editorTheme: {
+        projects: {
+            enabled: false
+        }
+    }
+}
+SETTINGS_EOF
+fi
+"
+
+# -----------------------------------------------------------------------------
+# 创建 down 文件（默认禁用自启动）
+# -----------------------------------------------------------------------------
 touch "$DOWN_FILE"
-
-log "service control files created successfully"
-
-# -----------------------------------------------------------------------------
-# 创建数据目录和初始配置
-# -----------------------------------------------------------------------------
-log "creating data directory and initial configuration"
-mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"creating data directory and initial configuration\",\"timestamp\":$(date +%s)}"
-
-proot-distro login "$PROOT_DISTRO" -- mkdir -p "$NODE_RED_DATA_DIR"
-
-# 生成初始配置
-bash "$SERVICE_DIR/restore.sh"
+log "created down file to disable auto-start by default"
 
 # -----------------------------------------------------------------------------
 # 启动服务测试
@@ -192,16 +207,4 @@ bash "$SERVICE_DIR/stop.sh"
 log "recording installation history"
 mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"recording installation history\",\"version\":\"$VERSION_STR\",\"timestamp\":$(date +%s)}"
 
-echo "$VERSION_STR" > "$VERSION_FILE"
-record_install_history "SUCCESS" "$VERSION_STR"
-
-# -----------------------------------------------------------------------------
-# 安装完成
-# -----------------------------------------------------------------------------
-END_TIME=$(date +%s)
-DURATION=$((END_TIME - START_TIME))
-
-log "node-red installation completed successfully in ${DURATION}s"
-mqtt_report "isg/install/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"installed\",\"version\":\"$VERSION_STR\",\"duration\":$DURATION,\"timestamp\":$END_TIME}"
-
-exit 0
+echo "$VERSION_STR"
