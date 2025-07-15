@@ -1,8 +1,9 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
 # Home Assistant 更新脚本
-# 版本: v1.4.0
+# 版本: v1.4.1
 # 功能: 升级 Home Assistant 到指定版本
+# 优化: 使用 heredoc 减少 proot 调用次数
 # =============================================================================
 
 set -euo pipefail
@@ -57,6 +58,7 @@ fi
 EXTRA_PIP_PKGS=""
 case "$TARGET_VERSION" in
     2025.7.1) EXTRA_PIP_PKGS="click==8.1.7";;
+    2025.8.0) EXTRA_PIP_PKGS="setuptools>=65.0.0";;
     # 添加更多版本特定依赖
 esac
 
@@ -68,22 +70,12 @@ if [ "$UPGRADE_DEPS" != "[]" ] && [ "$UPGRADE_DEPS" != "null" ]; then
     done < <(echo "$UPGRADE_DEPS" | jq -r '.[]' 2>/dev/null || true)
 fi
 
-if [ ${#DEPS_ARRAY[@]} -gt 0 ] || [ -n "$EXTRA_PIP_PKGS" ]; then
-    ALL_DEPS="${DEPS_ARRAY[*]} $EXTRA_PIP_PKGS"
-    log "installing upgrade dependencies: $ALL_DEPS"
-    mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"updating\",\"current_version\":\"$CURRENT_VERSION\",\"message\":\"installing upgrade dependencies\",\"dependencies\":\"$ALL_DEPS\",\"timestamp\":$(date +%s)}"
-    
-    # 在容器内安装升级依赖
-    if ! proot-distro login "$PROOT_DISTRO" -- bash -c "
-        source $HA_VENV_DIR/bin/activate
-        pip install --upgrade pip
-        [ -n \"$ALL_DEPS\" ] && pip install $ALL_DEPS
-    "; then
-        log "failed to install upgrade dependencies"
-        mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"upgrade dependencies installation failed\",\"dependencies\":\"$ALL_DEPS\",\"current_version\":\"$CURRENT_VERSION\",\"timestamp\":$(date +%s)}"
-        record_update_history "FAILED" "$CURRENT_VERSION" "$TARGET_VERSION" "upgrade dependencies installation failed"
-        exit 1
-    fi
+# 合并所有依赖
+ALL_DEPS="${DEPS_ARRAY[*]} $EXTRA_PIP_PKGS"
+ALL_DEPS=$(echo "$ALL_DEPS" | xargs)  # 去除多余空格
+
+if [ -n "$ALL_DEPS" ]; then
+    log "will install upgrade dependencies: $ALL_DEPS"
 else
     log "no upgrade dependencies specified"
 fi
@@ -98,15 +90,54 @@ bash "$SERVICE_DIR/stop.sh"
 sleep 5
 
 # -----------------------------------------------------------------------------
-# 执行升级（进入 proot 容器）
+# 执行升级（使用 heredoc 优化）
 # -----------------------------------------------------------------------------
-log "updating Home Assistant to version $TARGET_VERSION"
+log "performing Home Assistant upgrade in proot container"
 mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"updating\",\"current_version\":\"$CURRENT_VERSION\",\"message\":\"installing new version\",\"target_version\":\"$TARGET_VERSION\",\"timestamp\":$(date +%s)}"
 
-if ! proot-distro login "$PROOT_DISTRO" -- bash -c "
-    source $HA_VENV_DIR/bin/activate
-    pip install --upgrade homeassistant==$TARGET_VERSION
-"; then
+if ! proot-distro login "$PROOT_DISTRO" << EOF
+set -euo pipefail
+
+log_step() {
+    echo "[STEP] \$1"
+}
+
+# 传递外部变量到容器内
+export TARGET_VERSION="$TARGET_VERSION"
+export ALL_DEPS="$ALL_DEPS"
+export CURRENT_VERSION="$CURRENT_VERSION"
+
+log_step "Activating virtual environment"
+source $HA_VENV_DIR/bin/activate
+
+log_step "Verifying current Home Assistant version"
+ACTUAL_CURRENT=\$(hass --version 2>/dev/null | head -n1 || echo "unknown")
+log_step "Current version in container: \$ACTUAL_CURRENT"
+
+log_step "Upgrading pip to latest version"
+pip install --upgrade pip
+
+# 安装升级依赖（如果有）
+if [ -n "\$ALL_DEPS" ]; then
+    log_step "Installing upgrade dependencies: \$ALL_DEPS"
+    pip install \$ALL_DEPS
+else
+    log_step "No upgrade dependencies to install"
+fi
+
+log_step "Upgrading Home Assistant to version \$TARGET_VERSION"
+pip install --upgrade "homeassistant==\$TARGET_VERSION"
+
+log_step "Verifying new Home Assistant version"
+NEW_VERSION=\$(hass --version 2>/dev/null | head -n1 || echo "unknown")
+log_step "New version after upgrade: \$NEW_VERSION"
+
+# 将版本信息写入临时文件供外部脚本读取
+echo "\$NEW_VERSION" > $HA_VERSION_TEMP
+
+log_step "Home Assistant upgrade completed successfully"
+EOF
+then
     log "Home Assistant upgrade failed"
     mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"Home Assistant upgrade failed\",\"current_version\":\"$CURRENT_VERSION\",\"target_version\":\"$TARGET_VERSION\",\"timestamp\":$(date +%s)}"
     record_update_history "FAILED" "$CURRENT_VERSION" "$TARGET_VERSION" "pip install failed"
@@ -116,7 +147,8 @@ fi
 # -----------------------------------------------------------------------------
 # 版本校验
 # -----------------------------------------------------------------------------
-UPDATED_VERSION=$(get_current_ha_version)
+log "verifying upgrade results"
+UPDATED_VERSION=$(cat "$HA_VERSION_TEMP" 2>/dev/null || echo "unknown")
 
 if [ "$UPDATED_VERSION" = "unknown" ]; then
     log "failed to get updated version"
@@ -132,17 +164,22 @@ if [ "$UPDATED_VERSION" != "$TARGET_VERSION" ]; then
     exit 1
 fi
 
-log "updated to version: $UPDATED_VERSION"
+log "version verification successful: $CURRENT_VERSION → $UPDATED_VERSION"
+
+# -----------------------------------------------------------------------------
+# 清理临时文件
+# -----------------------------------------------------------------------------
+rm -f "$HA_VERSION_TEMP"
 
 # -----------------------------------------------------------------------------
 # 重启服务并健康检查
 # -----------------------------------------------------------------------------
-log "starting service"
+log "starting service after upgrade"
 mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"updating\",\"current_version\":\"$CURRENT_VERSION\",\"message\":\"starting service\",\"new_version\":\"$UPDATED_VERSION\",\"timestamp\":$(date +%s)}"
 
 bash "$SERVICE_DIR/start.sh"
 
-log "waiting for service ready"
+log "waiting for service ready after upgrade"
 mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"updating\",\"current_version\":\"$CURRENT_VERSION\",\"message\":\"waiting for service ready\",\"new_version\":\"$UPDATED_VERSION\",\"timestamp\":$(date +%s)}"
 
 MAX_WAIT=300
@@ -164,7 +201,7 @@ while [ "$WAITED" -lt "$MAX_WAIT" ]; do
         
         # 更新版本文件
         echo "$UPDATED_VERSION" > "$VERSION_FILE"
-        log "update completed: $CURRENT_VERSION → $UPDATED_VERSION"
+        log "update completed successfully: $CURRENT_VERSION → $UPDATED_VERSION (${DURATION}s)"
         exit 0
     fi
     sleep "$INTERVAL"
