@@ -229,7 +229,7 @@ generate_status_message() {
     local uptime_minutes=$(( uptime_seconds / 60 ))
     
     case "$run_status" in
-        "running")
+        ("running")
             if [ $uptime_minutes -lt 5 ]; then
                 echo "Home Assistant restarted $uptime_minutes minutes ago"
             elif [ $uptime_minutes -lt 60 ]; then
@@ -239,16 +239,16 @@ generate_status_message() {
                 echo "Home Assistant running for $uptime_hours hours"
             fi
             ;;
-        "starting")
+        ("starting")
             echo "Home Assistant is starting up"
             ;;
-        "stopping")
+        ("stopping")
             echo "Home Assistant is stopping"
             ;;
-        "stopped")
+        ("stopped")
             echo "Home Assistant is not running"
             ;;
-        "failed")
+        ("failed")
             echo "Home Assistant failed to start"
             ;;
         *)
