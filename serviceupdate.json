@@ -1,5 +1,5 @@
 {
-  "generated": "2025-07-13T12:00:00Z",
+  "generated": "2025-07-15T12:00:00Z",
   "services": [
     {
       "id": "hass",
@@ -12,7 +12,18 @@
       "current_ha_version": "2025.5.3",
       "latest_ha_version": "2025.7.1",
       "upgrade_dependencies": [
-        "click==8.1.7",
+        "click==8.1.7"
+      ],
+      "install_dependencies": [
+        "python3",
+        "python3-pip",
+        "python3-venv",
+        "ffmpeg",
+        "libturbojpeg0-dev",
+        "gcc",
+        "g++",
+        "make",
+        "build-essential"
       ],
       "notes": "Support for new MQTT schema and stability fixes."
     },
@@ -27,6 +38,14 @@
       "current_service_version": "2.5.1",
       "latest_service_version": "2.5.1",
       "upgrade_dependencies": [
+      ],
+      "install_dependencies": [
+        "nodejs",
+        "git",
+        "make",
+        "g++",
+        "gcc",
+        "libsystemd-dev"
       ],
       "notes": "Improved Zigbee adapter support."
     }
