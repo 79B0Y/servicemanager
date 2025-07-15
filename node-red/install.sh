@@ -207,4 +207,16 @@ bash "$SERVICE_DIR/stop.sh"
 log "recording installation history"
 mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"recording installation history\",\"version\":\"$VERSION_STR\",\"timestamp\":$(date +%s)}"
 
-echo "$VERSION_STR"
+echo "$VERSION_STR" > "$VERSION_FILE"
+record_install_history "SUCCESS" "$VERSION_STR"
+
+# -----------------------------------------------------------------------------
+# 安装完成
+# -----------------------------------------------------------------------------
+END_TIME=$(date +%s)
+DURATION=$((END_TIME - START_TIME))
+
+log "node-red installation completed successfully in ${DURATION}s"
+mqtt_report "isg/install/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"installed\",\"version\":\"$VERSION_STR\",\"duration\":$DURATION,\"timestamp\":$END_TIME}"
+
+exit 0
