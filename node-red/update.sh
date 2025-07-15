@@ -1,7 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
 # Node-RED 更新脚本
-# 版本: v1.1.0
+# 版本: v1.0.0
 # 功能: 升级 Node-RED 到最新版本
 # =============================================================================
 
@@ -43,14 +43,6 @@ else
     UPGRADE_DEPS=$(get_upgrade_dependencies)
 fi
 
-# 获取目标版本
-TARGET_VERSION="${TARGET_VERSION:-$(get_latest_version)}"
-if [ "$TARGET_VERSION" = "unknown" ]; then
-    TARGET_VERSION="latest"  # 默认使用最新版本
-fi
-
-log "updating to version: $TARGET_VERSION"
-
 # 转换为 bash 数组
 DEPS_ARRAY=()
 if [ "$UPGRADE_DEPS" != "[]" ] && [ "$UPGRADE_DEPS" != "null" ]; then
@@ -66,12 +58,26 @@ if [ ${#DEPS_ARRAY[@]} -gt 0 ]; then
     # 安装升级依赖
     for dep in "${DEPS_ARRAY[@]}"; do
         log "installing upgrade dependency: $dep"
-        # 这里可以根据具体需求实现依赖安装逻辑
-        # 例如：proot-distro login "$PROOT_DISTRO" -- npm install -g "$dep"
+        if ! proot-distro login "$PROOT_DISTRO" -- npm install -g "$dep"; then
+            log "warning: failed to install upgrade dependency: $dep"
+        fi
     done
 else
     log "no upgrade dependencies specified"
 fi
+
+# -----------------------------------------------------------------------------
+# 获取目标版本
+# -----------------------------------------------------------------------------
+TARGET_VERSION="${TARGET_VERSION:-$(get_latest_version)}"
+if [ "$TARGET_VERSION" = "unknown" ]; then
+    log "failed to get target version from serviceupdate.json"
+    mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"failed to get target version\",\"current_version\":\"$CURRENT_VERSION\",\"timestamp\":$(date +%s)}"
+    record_update_history "FAILED" "$CURRENT_VERSION" "unknown" "failed to get target version"
+    exit 1
+fi
+
+log "updating to version: $TARGET_VERSION"
 
 # -----------------------------------------------------------------------------
 # 停止服务
@@ -83,21 +89,15 @@ bash "$SERVICE_DIR/stop.sh"
 sleep 5
 
 # -----------------------------------------------------------------------------
-# 执行升级（进入 proot 容器）
+# 执行升级
 # -----------------------------------------------------------------------------
 log "updating node-red"
-mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"updating\",\"current_version\":\"$CURRENT_VERSION\",\"message\":\"updating node-red application\",\"timestamp\":$(date +%s)}"
+mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"updating\",\"current_version\":\"$CURRENT_VERSION\",\"message\":\"updating node-red\",\"target_version\":\"$TARGET_VERSION\",\"timestamp\":$(date +%s)}"
 
-# 使用 pnpm 升级 Node-RED
-UPDATE_CMD="pnpm up -g node-red"
-if [ "$TARGET_VERSION" != "latest" ]; then
-    UPDATE_CMD="pnpm up -g node-red@$TARGET_VERSION"
-fi
-
-if ! proot-distro login "$PROOT_DISTRO" -- bash -c "$UPDATE_CMD"; then
+if ! proot-distro login "$PROOT_DISTRO" -- pnpm up -g "node-red@$TARGET_VERSION"; then
     log "node-red update failed"
     mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"node-red update failed\",\"current_version\":\"$CURRENT_VERSION\",\"timestamp\":$(date +%s)}"
-    record_update_history "FAILED" "$CURRENT_VERSION" "unknown" "node-red update failed"
+    record_update_history "FAILED" "$CURRENT_VERSION" "$TARGET_VERSION" "pnpm update failed"
     exit 1
 fi
 
