@@ -261,7 +261,7 @@ generate_status_message() {
 # 辅助函数 - 获取配置信息 (JSON格式)
 # -----------------------------------------------------------------------------
 get_config_info() {
-    if ! proot-distro login "$PROOT_DISTRO" -- test -f "$HA_CONFIG_DIR/configuration.yaml"; then
+    if ! proot-distro login "$PROOT_DISTRO" -- bash -c "test -f '$HA_CONFIG_DIR/configuration.yaml'" 2>/dev/null; then
         echo '{"error": "Config file not found"}'
         return
     fi
