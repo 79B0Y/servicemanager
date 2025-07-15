@@ -37,8 +37,7 @@
       "latest_script_package_sha256": "def789abc456...",
       "current_service_version": "2.5.1",
       "latest_service_version": "2.5.1",
-      "upgrade_dependencies": [
-      ],
+      "upgrade_dependencies": [],
       "install_dependencies": [
         "nodejs",
         "git",
@@ -48,6 +47,27 @@
         "libsystemd-dev"
       ],
       "notes": "Improved Zigbee adapter support."
+    },
+    {
+      "id": "zwave-js-ui",
+      "display_name": "Z-Wave JS UI",
+      "enabled": true,
+      "current_script_version": "1.0.0",
+      "latest_script_version": "1.0.0",
+      "latest_script_package_url": "https://dl.linknlink.com/services/zwave-js-ui-scripts-1.0.0.tar.gz",
+      "latest_script_package_sha256": "ghi012jkl345...",
+      "current_service_version": "9.9.1",
+      "latest_service_version": "9.10.0",
+      "upgrade_dependencies": [],
+      "install_dependencies": [
+        "nodejs",
+        "git",
+        "make",
+        "g++",
+        "gcc",
+        "libsystemd-dev"
+      ],
+      "notes": "Enhanced Z-Wave device management and improved security support."
     }
   ]
 }
