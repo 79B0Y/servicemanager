@@ -125,42 +125,60 @@ if [ -z "$RESTORE_FILE" ]; then
     log "no backup file found, will generate default configuration"
     mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"restoring\",\"method\":\"default_config\",\"timestamp\":$(date +%s)}"
     
-    # 停止服务
-    log "stopping Home Assistant to ensure clean state"
-    bash "$SERVICE_DIR/stop.sh" || true
-    sleep 5
+    # 检查当前是否为安装过程（通过检查服务是否存在来判断）
+    DURING_INSTALL=false
+    if ! bash "$SERVICE_DIR/status.sh" --quiet 2>/dev/null; then
+        # 如果状态检查失败，可能是在安装过程中
+        DURING_INSTALL=true
+        log "detected installation process, skipping service stop/start cycle"
+    fi
+    
+    if [ "$DURING_INSTALL" = "false" ]; then
+        # 正常的还原过程：停止服务
+        log "stopping Home Assistant to ensure clean state"
+        bash "$SERVICE_DIR/stop.sh" || true
+        sleep 5
+    fi
     
     # 生成默认配置
     generate_default_config
     
-    # 启动服务验证配置
-    bash "$SERVICE_DIR/start.sh"
-    
-    # 等待并验证服务状态
-    MAX_WAIT=180
-    INTERVAL=5
-    WAITED=0
-    log "waiting for Home Assistant to start with new configuration"
-    
-    while [ "$WAITED" -lt "$MAX_WAIT" ]; do
+    if [ "$DURING_INSTALL" = "false" ]; then
+        # 正常的还原过程：启动服务验证配置
+        bash "$SERVICE_DIR/start.sh"
+        
+        # 等待并验证服务状态
+        MAX_WAIT=180
+        INTERVAL=5
+        WAITED=0
+        log "waiting for Home Assistant to start with new configuration"
+        
+        while [ "$WAITED" -lt "$MAX_WAIT" ]; do
+            if bash "$SERVICE_DIR/status.sh" --quiet; then
+                log "service is running with new configuration after ${WAITED}s"
+                break
+            fi
+            sleep "$INTERVAL"
+            WAITED=$((WAITED + INTERVAL))
+        done
+        
+        # 最终状态验证和上报
         if bash "$SERVICE_DIR/status.sh" --quiet; then
-            log "service is running with new configuration after ${WAITED}s"
-            break
+            END_TIME=$(date +%s)
+            DURATION=$((END_TIME - START_TIME))
+            mqtt_report "isg/restore/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"success\",\"method\":\"default_config\",\"duration\":$DURATION,\"startup_time\":$WAITED,\"timestamp\":$END_TIME}"
+            log "default configuration generated and service started successfully in ${DURATION}s (startup: ${WAITED}s)"
+        else
+            log "service failed to start with new configuration after ${MAX_WAIT}s"
+            mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"service failed to start after config generation\",\"method\":\"default_config\",\"timestamp\":$(date +%s)}"
+            exit 1
         fi
-        sleep "$INTERVAL"
-        WAITED=$((WAITED + INTERVAL))
-    done
-    
-    # 最终状态验证和上报
-    if bash "$SERVICE_DIR/status.sh" --quiet; then
+    else
+        # 安装过程中：仅生成配置，不启动服务
         END_TIME=$(date +%s)
         DURATION=$((END_TIME - START_TIME))
-        mqtt_report "isg/restore/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"success\",\"method\":\"default_config\",\"duration\":$DURATION,\"startup_time\":$WAITED,\"timestamp\":$END_TIME}"
-        log "default configuration generated and service started successfully in ${DURATION}s (startup: ${WAITED}s)"
-    else
-        log "service failed to start with new configuration after ${MAX_WAIT}s"
-        mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"service failed to start after config generation\",\"method\":\"default_config\",\"timestamp\":$(date +%s)}"
-        exit 1
+        mqtt_report "isg/restore/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"success\",\"method\":\"default_config\",\"during_install\":true,\"duration\":$DURATION,\"timestamp\":$END_TIME}"
+        log "default configuration generated successfully during installation in ${DURATION}s"
     fi
     
     exit 0
