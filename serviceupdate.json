@@ -69,5 +69,25 @@
       ],
       "notes": "Enhanced Z-Wave device management and improved security support."
     }
+  ],
+  {
+  "id": "node-red",
+  "display_name": "Node-RED",
+  "enabled": true,
+  "current_script_version": "1.0.0",
+  "latest_script_version": "1.0.0",
+  "latest_script_package_url": "https://dl.linknlink.com/services/node-red-scripts-1.0.0.tar.gz",
+  "latest_script_package_sha256": "fed456def789...",
+  "current_service_version": "4.0.9",
+  "latest_service_version": "4.0.9",
+  "upgrade_dependencies": [
+    "node-red-contrib-dashboard@3.6.5"
+  ],
+  "install_dependencies": [
+    "nodejs",
+    "npm"
+  ],
+  "notes": "Visual programming for IoT with flow-based development."
+    }
   ]
 }
