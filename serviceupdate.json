@@ -38,9 +38,7 @@
       "latest_script_package_sha256": "def789abc456...",
       "current_service_version": "4.0.9",
       "latest_service_version": "4.0.10",
-      "upgrade_dependencies": [
-        "node-red-contrib-dashboard@3.6.0"
-      ],
+      "upgrade_dependencies": [],
       "install_dependencies": [
         "nodejs",
         "npm"
