@@ -61,6 +61,21 @@
       "notes": "Visual programming for IoT and automation."
     },
     {
+      "id": "mosquitto",
+      "display_name": "Mosquitto MQTT Broker",
+      "enabled": true,
+      "current_script_version": "1.0.0",
+      "latest_script_version": "1.0.0",
+      "latest_script_package_url": "https://dl.linknlink.com/services/node-red-scripts-1.0.0.tar.gz",
+      "latest_script_package_sha256": "def789abc456...",
+      "current_service_version": "v10.4.1",
+      "latest_service_version": "v10.9.0",
+      "upgrade_dependencies": [],
+      "install_dependencies": [],
+       "config":{},
+      "notes": "Visual programming for IoT and automation."
+    },
+    {
       "id": "zigbee2mqtt",
       "display_name": "Zigbee2MQTT",
       "enabled": false,
