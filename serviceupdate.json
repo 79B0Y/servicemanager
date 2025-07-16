@@ -25,7 +25,7 @@
         "make",
         "build-essential"
       ],
-      "settings":[],
+      "config":{},
       "notes": "Support for new MQTT schema and stability fixes."
     },
     {
@@ -45,7 +45,7 @@
         "nodejs",
         "npm"
       ],
-      "settings":[],
+      "config":{},,
       "notes": "Visual programming for IoT and automation."
     },
     {
@@ -60,7 +60,7 @@
       "latest_service_version": "v10.9.0",
       "upgrade_dependencies": [],
       "install_dependencies": [],
-      "settings":[],
+       "config":{},,
       "notes": "Visual programming for IoT and automation."
     },
     {
@@ -83,7 +83,7 @@
         "gcc",
         "libsystemd-dev"
       ],
-      "settings":[],
+       "config":{},,
       "notes": "Improved Zigbee adapter support."
     }
   ]
