@@ -1,5 +1,5 @@
 {
-  "generated": "2025-07-15T12:00:00Z",
+  "generated": "2025-07-16T12:00:00Z",
   "services": [
     {
       "id": "hass",
@@ -25,7 +25,43 @@
         "make",
         "build-essential"
       ],
+      "settings":[],
       "notes": "Support for new MQTT schema and stability fixes."
+    },
+    {
+      "id": "node-red",
+      "display_name": "Node-RED",
+      "enabled": true,
+      "current_script_version": "1.0.0",
+      "latest_script_version": "1.0.0",
+      "latest_script_package_url": "https://dl.linknlink.com/services/node-red-scripts-1.0.0.tar.gz",
+      "latest_script_package_sha256": "def789abc456...",
+      "current_service_version": "4.0.9",
+      "latest_service_version": "4.0.10",
+      "upgrade_dependencies": [
+        "node-red-contrib-dashboard@3.6.0"
+      ],
+      "install_dependencies": [
+        "nodejs",
+        "npm"
+      ],
+      "settings":[],
+      "notes": "Visual programming for IoT and automation."
+    },
+    {
+      "id": "zwave-js-ui",
+      "display_name": "Z-Wave JS UI",
+      "enabled": true,
+      "current_script_version": "1.0.0",
+      "latest_script_version": "1.0.0",
+      "latest_script_package_url": "https://dl.linknlink.com/services/node-red-scripts-1.0.0.tar.gz",
+      "latest_script_package_sha256": "def789abc456...",
+      "current_service_version": "v10.4.1",
+      "latest_service_version": "v10.9.0",
+      "upgrade_dependencies": [],
+      "install_dependencies": [],
+      "settings":[],
+      "notes": "Visual programming for IoT and automation."
     },
     {
       "id": "zigbee2mqtt",
@@ -37,7 +73,8 @@
       "latest_script_package_sha256": "def789abc456...",
       "current_service_version": "2.5.1",
       "latest_service_version": "2.5.1",
-      "upgrade_dependencies": [],
+      "upgrade_dependencies": [
+      ],
       "install_dependencies": [
         "nodejs",
         "git",
@@ -46,48 +83,8 @@
         "gcc",
         "libsystemd-dev"
       ],
+      "settings":[],
       "notes": "Improved Zigbee adapter support."
-    },
-    {
-      "id": "zwave-js-ui",
-      "display_name": "Z-Wave JS UI",
-      "enabled": true,
-      "current_script_version": "1.0.0",
-      "latest_script_version": "1.0.0",
-      "latest_script_package_url": "https://dl.linknlink.com/services/zwave-js-ui-scripts-1.0.0.tar.gz",
-      "latest_script_package_sha256": "ghi012jkl345...",
-      "current_service_version": "9.9.1",
-      "latest_service_version": "9.10.0",
-      "upgrade_dependencies": [],
-      "install_dependencies": [
-        "nodejs",
-        "git",
-        "make",
-        "g++",
-        "gcc",
-        "libsystemd-dev"
-      ],
-      "notes": "Enhanced Z-Wave device management and improved security support."
-    }
-  ],
-  {
-  "id": "node-red",
-  "display_name": "Node-RED",
-  "enabled": true,
-  "current_script_version": "1.0.0",
-  "latest_script_version": "1.0.0",
-  "latest_script_package_url": "https://dl.linknlink.com/services/node-red-scripts-1.0.0.tar.gz",
-  "latest_script_package_sha256": "fed456def789...",
-  "current_service_version": "4.0.9",
-  "latest_service_version": "4.0.9",
-  "upgrade_dependencies": [
-    "node-red-contrib-dashboard@3.6.5"
-  ],
-  "install_dependencies": [
-    "nodejs",
-    "npm"
-  ],
-  "notes": "Visual programming for IoT with flow-based development."
     }
   ]
 }
