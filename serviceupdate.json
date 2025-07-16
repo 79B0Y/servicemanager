@@ -45,7 +45,7 @@
         "nodejs",
         "npm"
       ],
-      "config":{},,
+      "config":{},
       "notes": "Visual programming for IoT and automation."
     },
     {
@@ -60,7 +60,7 @@
       "latest_service_version": "v10.9.0",
       "upgrade_dependencies": [],
       "install_dependencies": [],
-       "config":{},,
+       "config":{},
       "notes": "Visual programming for IoT and automation."
     },
     {
@@ -83,7 +83,7 @@
         "gcc",
         "libsystemd-dev"
       ],
-       "config":{},,
+       "config":{},
       "notes": "Improved Zigbee adapter support."
     }
   ]
