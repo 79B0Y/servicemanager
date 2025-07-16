@@ -44,18 +44,18 @@ log_step() {
 }
 
 log_step "killing zwave-js-ui if running"
-# 通过8190端口找到zwave-js-ui进程
-ZWAVE_PORT_PID=$(netstat -tnlp 2>/dev/null | grep ':8190 ' | awk '{print $7}' | cut -d'/' -f1 | head -n1)
+# 通过8091端口找到zwave-js-ui进程
+ZWAVE_PORT_PID=$(netstat -tnlp 2>/dev/null | grep ':8091 ' | awk '{print $7}' | cut -d'/' -f1 | head -n1)
 if [ -n "$ZWAVE_PORT_PID" ] && [ "$ZWAVE_PORT_PID" != "-" ]; then
     # 检查进程工作目录确认是zwave-js-ui
     ZWAVE_CWD=$(ls -l /proc/$ZWAVE_PORT_PID/cwd 2>/dev/null | grep -o 'zwave-js-ui' || true)
     if [ -n "$ZWAVE_CWD" ]; then
         kill "$ZWAVE_PORT_PID" && echo "[INFO] killed zwave-js-ui process $ZWAVE_PORT_PID" || echo "[INFO] failed to kill process"
     else
-        echo "[INFO] process on port 8190 is not zwave-js-ui"
+        echo "[INFO] process on port 8091 is not zwave-js-ui"
     fi
 else
-    echo "[INFO] no process found on port 8190"
+    echo "[INFO] no process found on port 8091"
 fi
 
 log_step "removing zwave-js-ui global package"
