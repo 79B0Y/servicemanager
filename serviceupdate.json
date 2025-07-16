@@ -40,8 +40,7 @@
       "latest_service_version": "4.0.10",
       "upgrade_dependencies": [],
       "install_dependencies": [
-        "nodejs",
-        "npm"
+        "nodejs"
       ],
       "config":{},
       "notes": "Visual programming for IoT and automation."
