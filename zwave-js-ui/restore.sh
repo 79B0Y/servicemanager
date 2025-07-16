@@ -86,7 +86,7 @@ generate_default_config() {
     "hassDiscovery": true,
     "discoveryPrefix": "homeassistant",
     "retainedDiscovery": true,
-    "port": 8190,
+    "port": 8091,
     "host": "0.0.0.0"
   },
   "ui": {
