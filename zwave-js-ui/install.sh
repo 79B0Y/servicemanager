@@ -101,6 +101,7 @@ mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"messa
 if ! proot-distro login "$PROOT_DISTRO" -- bash -c "
     export SHELL=/data/data/com.termux/files/usr/bin/bash
     source ~/.bashrc 2>/dev/null || true
+    export PATH=/root/.pnpm-global/bin:\$PATH
     pnpm add -g zwave-js-ui
 "; then
     log "failed to install zwave-js-ui"
