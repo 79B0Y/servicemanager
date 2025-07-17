@@ -621,8 +621,7 @@ read_config_from_serviceupdate() {
     return 0
 }
 
-# 修复后的 generate_mosquitto_config_from_serviceupdate 函数
-# 需要在 common_paths.sh 中替换原来的函数
+# 在 common_paths.sh 中修复 generate_mosquitto_config_from_serviceupdate 函数
 
 generate_mosquitto_config_from_serviceupdate() {
     if ! read_config_from_serviceupdate; then
@@ -635,17 +634,25 @@ generate_mosquitto_config_from_serviceupdate() {
     
     log "Generating mosquitto.conf from serviceupdate.json configuration"
     
+    # 处理绑定地址：如果是 0.0.0.0 则绑定所有接口，否则使用指定地址
+    local bind_spec=""
+    if [ "$CONFIG_BIND_ADDRESS" = "0.0.0.0" ]; then
+        bind_spec="0.0.0.0"  # 绑定所有接口
+    else
+        bind_spec="$CONFIG_BIND_ADDRESS"  # 绑定指定接口
+    fi
+    
     cat > "$MOSQUITTO_CONF_FILE" << EOF
 # Mosquitto Configuration File
 # Auto-generated from serviceupdate.json config
 # Generated on: $(date)
 # Compatible with Mosquitto 2.0+
 
-# Network Settings (new format)
-listener $CONFIG_PORT 0.0.0.0
+# Network Settings - 绑定到指定接口
+listener $CONFIG_PORT $bind_spec
 
-# WebSocket Support
-listener $CONFIG_WEBSOCKET_PORT
+# WebSocket Support - 也绑定到相同接口
+listener $CONFIG_WEBSOCKET_PORT $bind_spec
 protocol websockets
 
 # Authentication
@@ -679,6 +686,7 @@ EOF
     # 验证生成的配置文件
     if mosquitto -c "$MOSQUITTO_CONF_FILE" -t 2>/dev/null; then
         log "mosquitto.conf generated and validated successfully"
+        log "Binding to: $bind_spec:$CONFIG_PORT (MQTT) and $bind_spec:$CONFIG_WEBSOCKET_PORT (WebSocket)"
         return 0
     else
         log_error "Generated mosquitto.conf failed validation"
