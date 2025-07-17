@@ -621,7 +621,9 @@ read_config_from_serviceupdate() {
     return 0
 }
 
-# 根据serviceupdate.json生成mosquitto.conf
+# 修复后的 generate_mosquitto_config_from_serviceupdate 函数
+# 需要在 common_paths.sh 中替换原来的函数
+
 generate_mosquitto_config_from_serviceupdate() {
     if ! read_config_from_serviceupdate; then
         log_error "Cannot generate mosquitto.conf: failed to read serviceupdate configuration"
@@ -637,10 +639,10 @@ generate_mosquitto_config_from_serviceupdate() {
 # Mosquitto Configuration File
 # Auto-generated from serviceupdate.json config
 # Generated on: $(date)
+# Compatible with Mosquitto 2.0+
 
-# Network Settings
-port $CONFIG_PORT
-bind_address $CONFIG_BIND_ADDRESS
+# Network Settings (new format)
+listener $CONFIG_PORT 0.0.0.0
 
 # WebSocket Support
 listener $CONFIG_WEBSOCKET_PORT
@@ -662,14 +664,16 @@ log_type notice
 log_type information
 log_timestamp true
 
-# Security
+# Security and Performance
 max_connections 100
 max_inflight_messages 20
 max_queued_messages 100
 
 # Client settings
-clientid_prefixes
 persistent_client_expiration 1m
+
+# Memory optimization
+max_packet_size 100000000
 EOF
     
     # 验证生成的配置文件
@@ -678,6 +682,8 @@ EOF
         return 0
     else
         log_error "Generated mosquitto.conf failed validation"
+        # 显示详细错误信息
+        mosquitto -c "$MOSQUITTO_CONF_FILE" -t
         return 1
     fi
 }
