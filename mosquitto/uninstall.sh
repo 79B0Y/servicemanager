@@ -55,6 +55,7 @@ MOSQUITTO_PID=$(get_mosquitto_pid || echo "")
 if [ -n "$MOSQUITTO_PID" ]; then
     log "force killing mosquitto process $MOSQUITTO_PID"
     kill -TERM "$MOSQUITTO_PID" 2>/dev/null || true
+(
     sleep 3
     # 检查是否有其他MQTT broker可用
     if timeout 5 nc -z 127.0.0.1 1883 2>/dev/null; then
@@ -228,7 +229,7 @@ fi
 if [ -d "$SERVICE_CONTROL_DIR" ]; then
     # 先停止supervise进程
     if [ -f "$SERVICE_CONTROL_DIR/supervise/pid" ]; then
-        local supervise_pid=$(cat "$SERVICE_CONTROL_DIR/supervise/pid" 2>/dev/null || echo "")
+        supervise_pid=$(cat "$SERVICE_CONTROL_DIR/supervise/pid" 2>/dev/null || echo "")
         if [ -n "$supervise_pid" ] && ps -p "$supervise_pid" >/dev/null 2>&1; then
             log "stopping supervise process: $supervise_pid"
             kill -TERM "$supervise_pid" 2>/dev/null || true
@@ -422,7 +423,3 @@ log "final verification completed"
 # -----------------------------------------------------------------------------
 log "reporting uninstall success"
 
-# 尝试通过其他可用的MQTT服务上报（异步，不阻塞）
-(
-    sleep 3
-    
