@@ -37,7 +37,7 @@
       "latest_script_package_url": "https://dl.linknlink.com/services/node-red-scripts-1.0.0.tar.gz",
       "latest_script_package_sha256": "def789abc456...",
       "current_service_version": "4.0.9",
-      "latest_service_version": "4.0.10",
+      "latest_service_version": "4.0.9",
       "upgrade_dependencies": [],
       "install_dependencies": [
         "nodejs"
