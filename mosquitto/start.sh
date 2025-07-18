@@ -15,7 +15,7 @@ DOWN_FILE="$SERVICE_CONTROL_DIR/down"
 
 TERMUX_VAR_DIR="/data/data/com.termux/files/usr/var"
 TERMUX_ETC_DIR="/data/data/com.termux/files/usr/etc"
-CONFIG_FILE="/data/data/com.termux/files/home/servicemanager/$SERVICE_ID/configuration.yaml"
+CONFIG_FILE="/data/data/com.termux/files/home/servicemanager/configuration.yaml"
 
 LOG_DIR="$BASE_DIR/logs"
 LOG_FILE="$LOG_DIR/start.log"
