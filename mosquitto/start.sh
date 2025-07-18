@@ -1,153 +1,84 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
-# Mosquitto 启动脚本
-# 版本: v1.0.1
-# 功能: 通过 isgservicemonitor 启动 Mosquitto 服务
-# 修复: IPv4监听验证，MQTT上报时机控制
+# Mosquitto 启动脚本 - 独立启动及验证登录、上报成功（从 configuration.yaml 读取 MQTT 配置）
+# 版本: v1.2.0
 # =============================================================================
 
 set -euo pipefail
 
-# 加载统一路径定义
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/common_paths.sh" || {
-    echo "Error: Cannot load common paths"
-    exit 1
-}
+# ---------------------- 基本参数与路径 ----------------------
+SERVICE_ID="mosquitto"
+BASE_DIR="/data/data/com.termux/files/home/servicemanager/$SERVICE_ID"
+SERVICE_CONTROL_DIR="/data/data/com.termux/files/usr/var/service/$SERVICE_ID"
+CONTROL_FILE="$SERVICE_CONTROL_DIR/supervise/control"
+DOWN_FILE="$SERVICE_CONTROL_DIR/down"
 
-# 设置脚本特定的日志文件
-LOG_FILE="$LOG_FILE_START"
+TERMUX_VAR_DIR="/data/data/com.termux/files/usr/var"
+TERMUX_ETC_DIR="/data/data/com.termux/files/usr/etc"
+CONFIG_FILE="/data/data/com.termux/files/home/servicemanager/$SERVICE_ID/configuration.yaml"
 
-# 确保必要目录存在
-ensure_directories
+LOG_DIR="$BASE_DIR/logs"
+LOG_FILE="$LOG_DIR/start.log"
 
-log "starting mosquitto service"
+mkdir -p "$LOG_DIR"
+log() { echo "[$(date '+%F %T')] [INFO] $*" | tee -a "$LOG_FILE"; }
 
-# 初始阶段避免MQTT上报（服务可能未运行）
-echo "[$(date '+%F %T')] [INFO] Starting Mosquitto service" >> "$LOG_FILE"
+log "开始启动 Mosquitto 服务..."
 
-# -----------------------------------------------------------------------------
-# 验证配置文件
-# -----------------------------------------------------------------------------
-if [ ! -f "$MOSQUITTO_CONF_FILE" ]; then
-    log "configuration file not found: $MOSQUITTO_CONF_FILE"
-    exit 1
-fi
-
-if ! mosquitto -c "$MOSQUITTO_CONF_FILE" -t 2>/dev/null; then
-    log "configuration file validation failed"
+# ---------------------- 读取 MQTT 配置 ----------------------
+if [ ! -f "$CONFIG_FILE" ]; then
+    log "配置文件不存在: $CONFIG_FILE"
     exit 1
 fi
 
-# -----------------------------------------------------------------------------
-# 移除 .disabled 和 down 文件
-# -----------------------------------------------------------------------------
-if [ -f "$DISABLED_FLAG" ]; then
-    rm -f "$DISABLED_FLAG"
-    log "removed .disabled flag"
-fi
+MQTT_HOST=$(grep -Po '^mqtt:[[:space:]]*\n[[:space:]]*host:[[:space:]]*\K.*' "$CONFIG_FILE")
+MQTT_PORT=$(grep -Po '^[[:space:]]*port:[[:space:]]*\K.*' "$CONFIG_FILE")
+MQTT_USER=$(grep -Po '^[[:space:]]*username:[[:space:]]*\K.*' "$CONFIG_FILE")
+MQTT_PASS=$(grep -Po '^[[:space:]]*password:[[:space:]]*\K.*' "$CONFIG_FILE")
 
+MQTT_HOST="${MQTT_HOST:-127.0.0.1}"
+MQTT_PORT="${MQTT_PORT:-1883}"
+
+log "MQTT 配置读取完成: host=$MQTT_HOST port=$MQTT_PORT user=$MQTT_USER"
+
+# ---------------------- 启动 Mosquitto 服务 ----------------------
 if [ -f "$DOWN_FILE" ]; then
     rm -f "$DOWN_FILE"
-    log "removed down file to enable auto-start"
+    log "移除 down 文件，准备启动 Mosquitto"
 fi
 
-# -----------------------------------------------------------------------------
-# 启动服务
-# -----------------------------------------------------------------------------
 if [ -e "$CONTROL_FILE" ]; then
     echo u > "$CONTROL_FILE"
-    log "sent 'u' command to $CONTROL_FILE"
+    log "发送 'u' 指令到 $CONTROL_FILE 触发服务启动"
 else
-    log "control file not found; cannot start service"
+    log "控制文件不存在，无法启动服务: $CONTROL_FILE"
     exit 1
 fi
 
-# -----------------------------------------------------------------------------
-# 等待服务进入 running 状态并验证IPv4监听
-# -----------------------------------------------------------------------------
-log "waiting for service ready and IPv4 listening verification"
+sleep 3
 
-TRIES=0
-MAX_TRIES_START=30
-INTERVAL=5
-IPV4_LISTENING=false
-
-while (( TRIES < MAX_TRIES_START )); do
-    # 检查进程是否存在
-    if MOSQUITTO_PID=$(get_mosquitto_pid); then
-        log "mosquitto process found (PID: $MOSQUITTO_PID)"
-        
-        # 验证IPv4端口监听 - 关键检查点
-        if netstat -tulnp 2>/dev/null | grep -q "0.0.0.0:1883"; then
-            log "SUCCESS: mosquitto listening on 0.0.0.0:1883"
-            IPV4_LISTENING=true
-            
-            # 检查WebSocket端口（非必需）
-            if netstat -tulnp 2>/dev/null | grep -q "0.0.0.0:9001"; then
-                log "SUCCESS: mosquitto WebSocket listening on 0.0.0.0:9001"
-            else
-                log "WARNING: WebSocket port 9001 not listening properly"
-            fi
-            
-            # 现在服务已启动，可以安全上报MQTT状态
-            mqtt_report "isg/run/$SERVICE_ID/status" \
-                "{\"service\":\"$SERVICE_ID\",\"status\":\"success\",\"message\":\"service started successfully\",\"ipv4_listening\":true,\"timestamp\":$(date +%s)}" \
-                3 2>/dev/null || log "MQTT report failed (expected if this is the first start)"
-            
-            log "service started successfully with IPv4 global listening"
-            exit 0
-        else
-            log "process exists but not listening on IPv4 yet (attempt $((TRIES+1))/$MAX_TRIES_START)"
-            
-            # 检查是否监听其他地址
-            local listening_status=$(netstat -tulnp 2>/dev/null | grep ":1883" || echo "none")
-            log "current 1883 listening: $listening_status"
-        fi
-    else
-        log "waiting for mosquitto process (attempt $((TRIES+1))/$MAX_TRIES_START)"
-    fi
-    
-    sleep "$INTERVAL"
-    TRIES=$((TRIES+1))
-done
-
-# -----------------------------------------------------------------------------
-# 启动失败处理
-# -----------------------------------------------------------------------------
-log "service failed to start properly after $((MAX_TRIES_START * INTERVAL)) seconds"
-
-# 获取详细诊断信息
-log "=== DIAGNOSTIC INFORMATION ==="
-log "Mosquitto process status:"
-ps aux | grep mosquitto | grep -v grep >> "$LOG_FILE" || echo "No mosquitto processes found" >> "$LOG_FILE"
-
-log "Network listening status:"
-netstat -tulnp 2>/dev/null | grep -E "(1883|9001)" >> "$LOG_FILE" || echo "No mosquitto ports listening" >> "$LOG_FILE"
-
-log "Configuration file test:"
-mosquitto -c "$MOSQUITTO_CONF_FILE" -t >> "$LOG_FILE" 2>&1 || echo "Configuration test failed" >> "$LOG_FILE"
-
-log "Service control status:"
-ls -la "$SERVICE_CONTROL_DIR/" >> "$LOG_FILE" 2>/dev/null || echo "Service control directory issue" >> "$LOG_FILE"
-
-log "Recent log entries:"
-if [ -f "$MOSQUITTO_LOG_DIR/mosquitto.log" ]; then
-    tail -10 "$MOSQUITTO_LOG_DIR/mosquitto.log" >> "$LOG_FILE" 2>/dev/null || true
+if netstat -tulnp 2>/dev/null | grep -q "0.0.0.0:$MQTT_PORT"; then
+    log "Mosquitto 已成功监听 0.0.0.0:$MQTT_PORT"
+else
+    log "Mosquitto 未监听 $MQTT_PORT，启动失败"
+    exit 1
 fi
 
-# 恢复 .disabled 状态
-log "service failed to start, restoring .disabled flag"
-touch "$DISABLED_FLAG"
-touch "$DOWN_FILE"
+# 验证 MQTT 用户登录
+if mosquitto_sub -h "$MQTT_HOST" -p "$MQTT_PORT" -u "$MQTT_USER" -P "$MQTT_PASS" -t "test/login" -C 1 -W 3; then
+    log "MQTT 登录验证成功: 用户 $MQTT_USER"
+else
+    log "MQTT 登录验证失败: 用户 $MQTT_USER"
+    exit 1
+fi
 
-# 尝试上报失败状态（如果其他MQTT服务可用）
-(
-    sleep 2
-    mqtt_report "isg/run/$SERVICE_ID/status" \
-        "{\"service\":\"$SERVICE_ID\",\"status\":\"failed\",\"message\":\"service failed to reach IPv4 listening state\",\"timeout\":$((MAX_TRIES_START * INTERVAL)),\"ipv4_listening\":false,\"timestamp\":$(date +%s)}" \
-        1 2>/dev/null || true
-) &
+# 上报启动成功状态
+TIMESTAMP=$(date +%s)
+TOPIC="isg/run/$SERVICE_ID/status"
+PAYLOAD="{\"service\":\"$SERVICE_ID\",\"status\":\"success\",\"message\":\"mosquitto started and login verified\",\"timestamp\":$TIMESTAMP}"
 
-log "mosquitto startup failed - check diagnostic information above"
-exit 1
+mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" -u "$MQTT_USER" -P "$MQTT_PASS" -t "$TOPIC" -m "$PAYLOAD"
+log "已上报 MQTT 启动成功状态: $TOPIC"
+
+log "Mosquitto 启动与验证完成"
+exit 0
