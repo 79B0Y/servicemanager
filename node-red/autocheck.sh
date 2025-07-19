@@ -127,9 +127,14 @@ get_improved_run_status() {
         return
     fi
     
-    # 调用 status.sh 检查实际运行状态
-    if bash "$SERVICE_DIR/status.sh" --quiet; then
-        echo "running"
+    # 直接检查进程状态，不依赖status.sh的输出
+    if get_nr_pid > /dev/null 2>&1; then
+        # 进一步检查HTTP接口是否可用
+        if timeout 5 nc -z 127.0.0.1 "$NR_PORT" 2>/dev/null; then
+            echo "running"
+        else
+            echo "starting"
+        fi
     else
         echo "stopped"
     fi
