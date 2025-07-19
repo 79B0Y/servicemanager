@@ -70,7 +70,7 @@ UPDATE_HISTORY_FILE="$BACKUP_DIR/.update_history"
 # -----------------------------------------------------------------------------
 # 容器内路径 (Proot Ubuntu)
 # -----------------------------------------------------------------------------
-ZWAVE_INSTALL_DIR="/root/.local/share/pnpm/global/5/node_modules/zwave-js-ui"
+ZWAVE_INSTALL_DIR="/root/.pnpm-global/global/5/node_modules/zwave-js-ui"
 ZWAVE_STORE_DIR="${ZWAVE_STORE_DIR:-$ZWAVE_INSTALL_DIR/store}"
 ZWAVE_CONFIG_FILE="$ZWAVE_STORE_DIR/settings.json"
 
