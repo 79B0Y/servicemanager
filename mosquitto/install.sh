@@ -169,32 +169,87 @@ log "安装依赖包: ${DEPS_ARRAY[*]}"
 mqtt_report_to_file "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"installing dependencies\",\"dependencies\":$DEPENDENCIES,\"timestamp\":$(date +%s)}"
 
 # -----------------------------------------------------------------------------
-# 安装 Mosquitto 包
+# 安装依赖包（非关键，失败不影响主应用安装）
 # -----------------------------------------------------------------------------
-log "更新包管理器"
-if ! pkg update; then
-    log "包管理器更新失败，继续尝试安装依赖"
+log "安装依赖包（如有失败不影响主应用）"
+mqtt_report_to_file "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"installing dependencies (optional)\",\"dependencies\":$DEPENDENCIES,\"timestamp\":$(date +%s)}"
+
+FAILED_DEPS=()
+SUCCESS_DEPS=()
+
+# 分别安装每个依赖，记录成功和失败的包
+for dep in "${DEPS_ARRAY[@]}"; do
+    if [ "$dep" != "mosquitto" ]; then  # 跳过主应用，单独处理
+        log "安装依赖: $dep"
+        if pkg install -y "$dep" 2>/dev/null; then
+            SUCCESS_DEPS+=("$dep")
+            log "✅ 依赖 $dep 安装成功"
+        else
+            FAILED_DEPS+=("$dep")
+            log "❌ 依赖 $dep 安装失败（继续安装主应用）"
+        fi
+    fi
+done
+
+# 上报依赖安装结果
+if [ ${#FAILED_DEPS[@]} -gt 0 ]; then
+    log "部分依赖安装失败: ${FAILED_DEPS[*]}"
+    mqtt_report_to_file "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"some dependencies failed but continuing\",\"failed_deps\":[$(printf '\"%s\",' "${FAILED_DEPS[@]}" | sed 's/,$//')],"successful_deps":[$(printf '\"%s\",' "${SUCCESS_DEPS[@]}" | sed 's/,$//')],"timestamp\":$(date +%s)}"
+else
+    log "所有依赖安装成功: ${SUCCESS_DEPS[*]}"
+    mqtt_report_to_file "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"all dependencies installed successfully\",\"dependencies\":[$(printf '\"%s\",' "${SUCCESS_DEPS[@]}" | sed 's/,$//')],"timestamp\":$(date +%s)}"
 fi
 
-log "安装依赖包: ${DEPS_ARRAY[*]}"
-if ! pkg install -y "${DEPS_ARRAY[@]}"; then
-    log "mosquitto 及依赖安装失败"
-    mqtt_report_to_file "isg/install/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"package installation failed\",\"timestamp\":$(date +%s)}"
+# -----------------------------------------------------------------------------
+# 更新包管理器
+# -----------------------------------------------------------------------------
+log "更新包管理器"
+mqtt_report_to_file "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"updating package manager\",\"timestamp\":$(date +%s)}"
+
+if ! pkg update; then
+    log "包管理器更新失败，但继续安装 mosquitto"
+    mqtt_report_to_file "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"package manager update failed but continuing\",\"timestamp\":$(date +%s)}"
+fi
+
+# -----------------------------------------------------------------------------
+# 安装 Mosquitto 主应用（关键步骤）
+# -----------------------------------------------------------------------------
+log "安装 mosquitto 主应用"
+mqtt_report_to_file "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"installing mosquitto package\",\"timestamp\":$(date +%s)}"
+
+if ! pkg install -y mosquitto; then
+    log "mosquitto 主应用安装失败"
+    mqtt_report_to_file "isg/install/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"mosquitto package installation failed\",\"timestamp\":$(date +%s)}"
     record_install_history "FAILED" "unknown"
     exit 1
 fi
 
-# 验证安装
+# 验证主应用安装
+log "验证 mosquitto 安装"
 if ! command -v mosquitto >/dev/null 2>&1; then
     log "mosquitto 命令不可用，安装失败"
-    mqtt_report_to_file "isg/install/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"mosquitto command not available\",\"timestamp\":$(date +%s)}"
+    mqtt_report_to_file "isg/install/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"mosquitto command not available after installation\",\"timestamp\":$(date +%s)}"
     record_install_history "FAILED" "unknown"
     exit 1
 fi
 
 # 获取版本信息
 VERSION_STR=$(mosquitto -h 2>/dev/null | grep 'version' | awk '{print $3}' 2>/dev/null || echo "unknown")
-log "mosquitto 版本: $VERSION_STR"
+log "mosquitto 主应用安装成功，版本: $VERSION_STR"
+
+# 上报安装成功和依赖摘要
+DEPS_SUMMARY=""
+if [ ${#SUCCESS_DEPS[@]} -gt 0 ] && [ ${#FAILED_DEPS[@]} -gt 0 ]; then
+    DEPS_SUMMARY="dependencies partially installed (${#SUCCESS_DEPS[@]} success, ${#FAILED_DEPS[@]} failed)"
+elif [ ${#SUCCESS_DEPS[@]} -gt 0 ]; then
+    DEPS_SUMMARY="all dependencies installed successfully"
+elif [ ${#FAILED_DEPS[@]} -gt 0 ]; then
+    DEPS_SUMMARY="dependencies installation failed but mosquitto installed"
+else
+    DEPS_SUMMARY="no additional dependencies required"
+fi
+
+mqtt_report_to_file "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"mosquitto installed successfully, $DEPS_SUMMARY\",\"version\":\"$VERSION_STR\",\"timestamp\":$(date +%s)}"
 
 # -----------------------------------------------------------------------------
 # 生成配置文件
@@ -324,14 +379,41 @@ END_TIME=$(date +%s)
 DURATION=$((END_TIME - START_TIME))
 
 log "mosquitto 安装完成，耗时 ${DURATION}s"
-mqtt_report_to_file "isg/install/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"installed\",\"version\":\"$VERSION_STR\",\"duration\":$DURATION,\"timestamp\":$END_TIME}"
+
+# 构建完整的安装报告
+INSTALL_REPORT="{\"service\":\"$SERVICE_ID\",\"status\":\"installed\",\"version\":\"$VERSION_STR\",\"duration\":$DURATION"
+
+# 添加依赖安装摘要
+if [ ${#SUCCESS_DEPS[@]} -gt 0 ]; then
+    INSTALL_REPORT="$INSTALL_REPORT,\"successful_deps\":[$(printf '\"%s\",' "${SUCCESS_DEPS[@]}" | sed 's/,$//')]"
+fi
+if [ ${#FAILED_DEPS[@]} -gt 0 ]; then
+    INSTALL_REPORT="$INSTALL_REPORT,\"failed_deps\":[$(printf '\"%s\",' "${FAILED_DEPS[@]}" | sed 's/,$//')]"
+fi
+
+INSTALL_REPORT="$INSTALL_REPORT,\"timestamp\":$END_TIME}"
+
+mqtt_report_to_file "isg/install/$SERVICE_ID/status" "$INSTALL_REPORT"
 
 log "安装摘要:"
 log "  - 版本: $VERSION_STR"
+log "  - 主应用: ✅ 安装成功"
+log "  - 依赖成功: ${#SUCCESS_DEPS[@]} 个 (${SUCCESS_DEPS[*]:-无})"
+log "  - 依赖失败: ${#FAILED_DEPS[@]} 个 (${FAILED_DEPS[*]:-无})"
 log "  - 配置文件: $MOSQUITTO_CONFIG_FILE"
 log "  - 密码文件: $MOSQUITTO_PASSWD_FILE"
 log "  - 默认用户: $DEFAULT_MQTT_USER"
 log "  - 监听地址: 0.0.0.0:$MOSQUITTO_PORT"
 log "  - 服务控制: $SERVICE_CONTROL_DIR"
+
+# 如果有依赖安装失败，给出建议
+if [ ${#FAILED_DEPS[@]} -gt 0 ]; then
+    log ""
+    log "⚠️  注意: 以下依赖安装失败，可能影响某些功能:"
+    for failed_dep in "${FAILED_DEPS[@]}"; do
+        log "   - $failed_dep"
+    done
+    log "   建议稍后手动安装: pkg install ${FAILED_DEPS[*]}"
+fi
 
 exit 0
