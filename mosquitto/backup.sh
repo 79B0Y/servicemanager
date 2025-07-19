@@ -108,7 +108,8 @@ log "mosquitto 正在运行，继续备份"
 log "收集备份内容"
 mqtt_report "isg/backup/$SERVICE_ID/status" "{\"status\":\"backuping\",\"message\":\"collecting backup content\",\"timestamp\":$(date +%s)}"
 
-TEMP_BACKUP_DIR="/tmp/mosquitto_backup_$$"
+# 使用 Termux 专用的临时目录
+TEMP_BACKUP_DIR="/data/data/com.termux/files/usr/tmp/mosquitto_backup_$"
 mkdir -p "$TEMP_BACKUP_DIR"
 
 # 创建备份清单文件
