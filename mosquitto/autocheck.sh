@@ -3,6 +3,7 @@
 # Mosquitto 自检脚本
 # 版本: v1.0.0
 # 功能: 单服务自检、性能监控和健康检查，汇总所有脚本状态
+# 修改用户名和密码： NEW_MQTT_USER="admin" NEW_MQTT_PASS="admin" bash autocheck.sh
 # =============================================================================
 
 set -euo pipefail
