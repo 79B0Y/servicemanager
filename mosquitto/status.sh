@@ -80,6 +80,25 @@ mqtt_report() {
 ensure_directories
 
 # -----------------------------------------------------------------------------
+# 检查安装状态
+# -----------------------------------------------------------------------------
+INSTALL_STATUS=false
+MOSQUITTO_VERSION="unknown"
+
+# 通过版本号检查程序是否安装
+if command -v mosquitto >/dev/null 2>&1; then
+    MOSQUITTO_VERSION=$(mosquitto -h 2>/dev/null | grep 'version' | awk '{print $3}' 2>/dev/null || echo "unknown")
+    if [ "$MOSQUITTO_VERSION" != "unknown" ] && [ -n "$MOSQUITTO_VERSION" ]; then
+        INSTALL_STATUS=true
+        log "mosquitto 已安装，版本: $MOSQUITTO_VERSION"
+    else
+        log "mosquitto 命令存在但无法获取版本信息"
+    fi
+else
+    log "mosquitto 未安装"
+fi
+
+# -----------------------------------------------------------------------------
 # 检查进程状态
 # -----------------------------------------------------------------------------
 PID=$(get_mosquitto_pid || true)
@@ -133,7 +152,7 @@ fi
 # -----------------------------------------------------------------------------
 case "${1:-}" in
     --json)
-        echo "{\"status\":\"$STATUS\",\"pid\":\"$PID\",\"runtime\":\"$RUNTIME\",\"port_status\":\"$PORT_STATUS\",\"connectivity\":\"$CONNECTIVITY_STATUS\"}"
+        echo "{\"status\":\"$STATUS\",\"pid\":\"$PID\",\"runtime\":\"$RUNTIME\",\"port_status\":\"$PORT_STATUS\",\"connectivity\":\"$CONNECTIVITY_STATUS\",\"install\":$INSTALL_STATUS,\"version\":\"$MOSQUITTO_VERSION\"}"
         exit $EXIT
         ;;
     --quiet)
@@ -148,8 +167,8 @@ esac
 # -----------------------------------------------------------------------------
 TS=$(date +%s)
 if [ "$STATUS" = "running" ]; then
-    mqtt_report "isg/status/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"running\",\"pid\":$PID,\"runtime\":\"$RUNTIME\",\"port_status\":\"$PORT_STATUS\",\"connectivity\":\"$CONNECTIVITY_STATUS\",\"timestamp\":$TS}"
-    log "mosquitto 运行中 (PID=$PID, 运行时间=$RUNTIME, 端口状态=$PORT_STATUS, 连接性=$CONNECTIVITY_STATUS)"
+    mqtt_report "isg/status/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"running\",\"pid\":$PID,\"runtime\":\"$RUNTIME\",\"port_status\":\"$PORT_STATUS\",\"connectivity\":\"$CONNECTIVITY_STATUS\",\"install\":$INSTALL_STATUS,\"version\":\"$MOSQUITTO_VERSION\",\"timestamp\":$TS}"
+    log "mosquitto 运行中 (PID=$PID, 运行时间=$RUNTIME, 端口状态=$PORT_STATUS, 连接性=$CONNECTIVITY_STATUS, 版本=$MOSQUITTO_VERSION)"
     
     # 显示详细的监听信息
     if [ "$PORT_STATUS" = "listening_global" ]; then
@@ -167,11 +186,11 @@ if [ "$STATUS" = "running" ]; then
     fi
     
 elif [ "$STATUS" = "starting" ]; then
-    mqtt_report "isg/status/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"starting\",\"pid\":$PID,\"runtime\":\"$RUNTIME\",\"port_status\":\"$PORT_STATUS\",\"connectivity\":\"$CONNECTIVITY_STATUS\",\"timestamp\":$TS}"
-    log "mosquitto 启动中 (PID=$PID, 端口状态=$PORT_STATUS, 连接性=$CONNECTIVITY_STATUS)"
+    mqtt_report "isg/status/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"starting\",\"pid\":$PID,\"runtime\":\"$RUNTIME\",\"port_status\":\"$PORT_STATUS\",\"connectivity\":\"$CONNECTIVITY_STATUS\",\"install\":$INSTALL_STATUS,\"version\":\"$MOSQUITTO_VERSION\",\"timestamp\":$TS}"
+    log "mosquitto 启动中 (PID=$PID, 端口状态=$PORT_STATUS, 连接性=$CONNECTIVITY_STATUS, 版本=$MOSQUITTO_VERSION)"
 else
-    mqtt_report "isg/status/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"stopped\",\"message\":\"service not running\",\"timestamp\":$TS}"
-    log "mosquitto 未运行"
+    mqtt_report "isg/status/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"stopped\",\"install\":$INSTALL_STATUS,\"version\":\"$MOSQUITTO_VERSION\",\"message\":\"service not running\",\"timestamp\":$TS}"
+    log "mosquitto 未运行 (安装状态=$INSTALL_STATUS, 版本=$MOSQUITTO_VERSION)"
 fi
 
 exit $EXIT
