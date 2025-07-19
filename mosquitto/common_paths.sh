@@ -269,13 +269,27 @@ get_config_info() {
         return
     fi
     
+    # 获取 mosquitto 配置信息
     local bind_address=$(grep "^bind_address" "$MOSQUITTO_CONFIG_FILE" | awk '{print $2}' 2>/dev/null || echo "127.0.0.1")
     local port=$(grep "^port" "$MOSQUITTO_CONFIG_FILE" | awk '{print $2}' 2>/dev/null || echo "1883")
     local allow_anonymous=$(grep "^allow_anonymous" "$MOSQUITTO_CONFIG_FILE" | awk '{print $2}' 2>/dev/null || echo "true")
     local password_file=$(grep "^password_file" "$MOSQUITTO_CONFIG_FILE" | awk '{print $2}' 2>/dev/null || echo "")
     local acl_file=$(grep "^acl_file" "$MOSQUITTO_CONFIG_FILE" | awk '{print $2}' 2>/dev/null || echo "")
     
-    echo "{\"bind_address\":\"$bind_address\",\"port\":\"$port\",\"allow_anonymous\":\"$allow_anonymous\",\"password_file\":\"$password_file\",\"acl_file\":\"$acl_file\"}"
+    # 获取当前 broker 的用户名和密码（从 servicemanager 配置文件）
+    load_mqtt_conf
+    local current_user="$MQTT_USER"
+    local current_pass="$MQTT_PASS"
+    
+    # 获取 mosquitto 密码文件中的用户列表
+    local user_count=0
+    local users_list=""
+    if [ -f "$password_file" ] && [ -r "$password_file" ]; then
+        user_count=$(wc -l < "$password_file" 2>/dev/null || echo 0)
+        users_list=$(cut -d':' -f1 "$password_file" 2>/dev/null | tr '\n' ',' | sed 's/,$//' || echo "")
+    fi
+    
+    echo "{\"bind_address\":\"$bind_address\",\"port\":\"$port\",\"allow_anonymous\":\"$allow_anonymous\",\"password_file\":\"$password_file\",\"acl_file\":\"$acl_file\",\"current_user\":\"$current_user\",\"current_password\":\"$current_pass\",\"user_count\":$user_count,\"users_list\":\"$users_list\"}"
 }
 
 # -----------------------------------------------------------------------------
