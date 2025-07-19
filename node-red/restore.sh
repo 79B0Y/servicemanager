@@ -337,11 +337,22 @@ if tar -xzf "$FINAL_RESTORE_FILE" -C "$TEMP_RESTORE_DIR"; then
             mkdir -p '$(dirname $NR_DATA_DIR)'
         "
         
-        # 复制数据到容器内
-        cp -r "$TEMP_RESTORE_DIR/$DATA_DIR_IN_BACKUP" "/tmp/node-red-restore"
+        # 使用Termux的临时目录，然后复制到容器内
+        TERMUX_RESTORE_TEMP="$TERMUX_TMP_DIR/node-red-restore-$"
+        mkdir -p "$TERMUX_RESTORE_TEMP"
+        cp -r "$TEMP_RESTORE_DIR/$DATA_DIR_IN_BACKUP" "$TERMUX_RESTORE_TEMP/"
+        
+        # 将数据复制到容器内
         proot-distro login "$PROOT_DISTRO" -- bash -c "
+            # 从Termux复制到容器临时位置
+            mkdir -p '/tmp'
+            cp -r '$TERMUX_RESTORE_TEMP/$(basename $DATA_DIR_IN_BACKUP)' '/tmp/node-red-restore'
+            # 移动到最终位置
             mv '/tmp/node-red-restore' '$NR_DATA_DIR'
         "
+        
+        # 清理Termux临时目录
+        rm -rf "$TERMUX_RESTORE_TEMP"
     else
         log "备份中未找到有效的数据目录，生成默认配置"
         generate_default_config
