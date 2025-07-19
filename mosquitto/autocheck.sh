@@ -3,6 +3,7 @@
 # Mosquitto 自检脚本
 # 版本: v1.0.0
 # 功能: 单服务自检、性能监控和健康检查，汇总所有脚本状态
+# 设置新的用户名和密码 NEW_MQTT_USER="newuser" NEW_MQTT_PASS="newpassword" bash autocheck.sh
 # =============================================================================
 
 set -euo pipefail
@@ -218,12 +219,26 @@ get_config_info() {
         return
     fi
     
+    # 获取 mosquitto 配置信息
     local bind_address=$(grep "^bind_address" "$MOSQUITTO_CONFIG_FILE" | awk '{print $2}' 2>/dev/null || echo "127.0.0.1")
     local port=$(grep "^port" "$MOSQUITTO_CONFIG_FILE" | awk '{print $2}' 2>/dev/null || echo "1883")
     local allow_anonymous=$(grep "^allow_anonymous" "$MOSQUITTO_CONFIG_FILE" | awk '{print $2}' 2>/dev/null || echo "true")
     local password_file=$(grep "^password_file" "$MOSQUITTO_CONFIG_FILE" | awk '{print $2}' 2>/dev/null || echo "")
     
-    echo "{\"bind_address\":\"$bind_address\",\"port\":\"$port\",\"allow_anonymous\":\"$allow_anonymous\",\"password_file\":\"$password_file\"}"
+    # 获取当前 broker 的用户名和密码（从 servicemanager 配置文件）
+    load_mqtt_conf
+    local current_user="$MQTT_USER"
+    local current_pass="$MQTT_PASS"
+    
+    # 获取 mosquitto 密码文件中的用户列表
+    local user_count=0
+    local users_list=""
+    if [ -f "$password_file" ] && [ -r "$password_file" ]; then
+        user_count=$(wc -l < "$password_file" 2>/dev/null || echo 0)
+        users_list=$(cut -d':' -f1 "$password_file" 2>/dev/null | tr '\n' ',' | sed 's/,$//' || echo "")
+    fi
+    
+    echo "{\"bind_address\":\"$bind_address\",\"port\":\"$port\",\"allow_anonymous\":\"$allow_anonymous\",\"password_file\":\"$password_file\",\"current_user\":\"$current_user\",\"current_password\":\"$current_pass\",\"user_count\":$user_count,\"users_list\":\"$users_list\"}"
 }
 
 generate_status_message() {
@@ -470,7 +485,7 @@ if [ "$RUN_STATUS" = "stopped" ]; then
 fi
 
 # -----------------------------------------------------------------------------
-# 检查服务重启情况
+# 检查服务重启情况（记录但不标记为问题）
 # -----------------------------------------------------------------------------
 MOSQUITTO_PID=$(get_mosquitto_pid || echo "")
 if [ -n "$MOSQUITTO_PID" ]; then
@@ -484,8 +499,11 @@ fi
 LAST_CHECK=$(cat "$LAST_CHECK_FILE" 2>/dev/null | head -n1 | tr -d '\n\r\t ' || echo 0)
 LAST_CHECK=${LAST_CHECK:-0}
 
+# 检测重启但仅记录，不影响整体状态
+RESTART_DETECTED=false
 if [ "$LAST_CHECK" -gt 0 ] && [ "$MOSQUITTO_UPTIME" -lt $((NOW - LAST_CHECK)) ]; then
-    RESULT_STATUS="problem"
+    RESTART_DETECTED=true
+    log "检测到服务重启：运行时间 ${MOSQUITTO_UPTIME}s < 检查间隔 $((NOW - LAST_CHECK))s"
 fi
 echo "$NOW" > "$LAST_CHECK_FILE"
 
@@ -557,6 +575,7 @@ FINAL_MESSAGE="$FINAL_MESSAGE\"latest_version\":\"$LATEST_MOSQUITTO_VERSION\","
 FINAL_MESSAGE="$FINAL_MESSAGE\"update_info\":\"$UPDATE_INFO\","
 FINAL_MESSAGE="$FINAL_MESSAGE\"message\":\"$STATUS_MESSAGE\","
 FINAL_MESSAGE="$FINAL_MESSAGE\"connectivity\":\"$CONNECTIVITY_STATUS\","
+FINAL_MESSAGE="$FINAL_MESSAGE\"restart_detected\":$RESTART_DETECTED,"
 FINAL_MESSAGE="$FINAL_MESSAGE\"timestamp\":$NOW"
 FINAL_MESSAGE="$FINAL_MESSAGE}"
 
