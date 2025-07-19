@@ -3,7 +3,6 @@
 # Mosquitto 自检脚本
 # 版本: v1.0.0
 # 功能: 单服务自检、性能监控和健康检查，汇总所有脚本状态
-# 设置新的用户名和密码 NEW_MQTT_USER="newuser" NEW_MQTT_PASS="newpassword" bash autocheck.sh
 # =============================================================================
 
 set -euo pipefail
@@ -314,7 +313,7 @@ get_update_info() {
 }
 
 # -----------------------------------------------------------------------------
-# 更新用户名密码功能
+# 用户名密码管理功能
 # -----------------------------------------------------------------------------
 update_mqtt_credentials() {
     local new_user="$1"
@@ -327,22 +326,78 @@ update_mqtt_credentials() {
     
     log "更新 MQTT 用户凭据: $new_user"
     
-    # 更新 mosquitto 密码文件
+    # 1. 更新 servicemanager 配置文件
+    if [ -f "$CONFIG_FILE" ]; then
+        # 使用 sed 更新用户名和密码
+        sed -i "s/username:.*/username: $new_user/" "$CONFIG_FILE"
+        sed -i "s/password:.*/password: $new_pass/" "$CONFIG_FILE"
+        log "已更新 servicemanager 配置文件"
+    else
+        log "警告: servicemanager 配置文件不存在: $CONFIG_FILE"
+        return 1
+    fi
+    
+    # 2. 更新 mosquitto 密码文件
     local passwd_file="$TERMUX_ETC_DIR/mosquitto/passwd"
     if ! mosquitto_passwd -c -b "$passwd_file" "$new_user" "$new_pass" 2>/dev/null; then
         log "更新 mosquitto 密码文件失败"
         return 1
     fi
     
-    # 更新 servicemanager 配置文件
-    if [ -f "$CONFIG_FILE" ]; then
-        # 使用 sed 更新用户名和密码
-        sed -i "s/username:.*/username: $new_user/" "$CONFIG_FILE"
-        sed -i "s/password:.*/password: $new_pass/" "$CONFIG_FILE"
-        log "已更新 servicemanager 配置文件"
+    log "mosquitto 密码文件更新成功"
+    return 0
+}
+
+verify_credentials_consistency() {
+    log "验证当前设置与 CONFIG_FILE 的一致性"
+    
+    # 从 CONFIG_FILE 读取配置
+    load_mqtt_conf
+    local config_user="$MQTT_USER"
+    local config_pass="$MQTT_PASS"
+    
+    log "CONFIG_FILE 中的用户: $config_user"
+    
+    # 检查 mosquitto 密码文件中是否有对应用户
+    local passwd_file="$TERMUX_ETC_DIR/mosquitto/passwd"
+    if [ ! -f "$passwd_file" ]; then
+        log "mosquitto 密码文件不存在，需要创建"
+        return 1
     fi
     
-    return 0
+    # 检查用户是否存在于密码文件中
+    if ! grep -q "^$config_user:" "$passwd_file" 2>/dev/null; then
+        log "用户 $config_user 不存在于 mosquitto 密码文件中，需要同步"
+        return 1
+    fi
+    
+    # 验证密码是否正确（通过连接测试）
+    if test_mqtt_auth "$config_user" "$config_pass"; then
+        log "✅ 凭据一致性验证通过"
+        return 0
+    else
+        log "❌ 凭据一致性验证失败，需要同步"
+        return 1
+    fi
+}
+
+sync_credentials_with_config() {
+    log "同步 mosquitto 设置与 CONFIG_FILE"
+    
+    # 从 CONFIG_FILE 读取配置
+    load_mqtt_conf
+    local config_user="$MQTT_USER"
+    local config_pass="$MQTT_PASS"
+    
+    # 更新 mosquitto 密码文件以匹配配置
+    local passwd_file="$TERMUX_ETC_DIR/mosquitto/passwd"
+    if mosquitto_passwd -c -b "$passwd_file" "$config_user" "$config_pass" 2>/dev/null; then
+        log "✅ mosquitto 设置已同步到 CONFIG_FILE"
+        return 0
+    else
+        log "❌ mosquitto 设置同步失败"
+        return 1
+    fi
 }
 
 test_mqtt_auth() {
@@ -392,10 +447,13 @@ LATEST_SCRIPT_VERSION=$(get_latest_script_version)
 UPGRADE_DEPS=$(get_upgrade_dependencies)
 
 # -----------------------------------------------------------------------------
-# 处理用户名密码更新请求
+# 处理用户名密码更新和一致性检查
 # -----------------------------------------------------------------------------
+
+# 第一步：处理环境变量指定的新凭据
+CREDENTIALS_UPDATED=false
 if [ -n "$NEW_MQTT_USER" ] && [ -n "$NEW_MQTT_PASS" ]; then
-    log "检测到用户名密码更新请求"
+    log "检测到用户名密码更新请求: $NEW_MQTT_USER"
     
     # 先停止服务
     if get_mosquitto_pid > /dev/null 2>&1; then
@@ -406,32 +464,64 @@ if [ -n "$NEW_MQTT_USER" ] && [ -n "$NEW_MQTT_PASS" ]; then
     
     # 更新凭据
     if update_mqtt_credentials "$NEW_MQTT_USER" "$NEW_MQTT_PASS"; then
-        log "凭据更新成功，重启服务"
-        bash "$SERVICE_DIR/start.sh"
-        
-        # 等待服务启动
+        log "✅ 新凭据更新成功"
+        CREDENTIALS_UPDATED=true
+    else
+        log "❌ 新凭据更新失败"
+        RESULT_STATUS="problem"
+    fi
+    
+# 第二步：验证当前设置与 CONFIG_FILE 的一致性
+elif ! verify_credentials_consistency; then
+    log "检测到凭据不一致，进行同步"
+    
+    # 先停止服务
+    if get_mosquitto_pid > /dev/null 2>&1; then
+        log "停止服务以同步凭据"
+        bash "$SERVICE_DIR/stop.sh" || true
+        sleep 3
+    fi
+    
+    # 同步设置
+    if sync_credentials_with_config; then
+        log "✅ 凭据同步成功"
+        CREDENTIALS_UPDATED=true
+    else
+        log "❌ 凭据同步失败"
+        RESULT_STATUS="problem"
+    fi
+fi
+
+# 第三步：如果有凭据更新，重启服务并验证
+if [ "$CREDENTIALS_UPDATED" = true ]; then
+    log "重启服务并验证凭据"
+    bash "$SERVICE_DIR/start.sh"
+    
+    # 等待服务启动
+    sleep 5
+    WAIT_COUNT=0
+    while [ $WAIT_COUNT -lt 12 ]; do  # 最多等待60秒
+        if bash "$SERVICE_DIR/status.sh" --quiet; then
+            log "✅ 服务重启成功"
+            break
+        fi
         sleep 5
-        WAIT_COUNT=0
-        while [ $WAIT_COUNT -lt 12 ]; do  # 最多等待60秒
-            if bash "$SERVICE_DIR/status.sh" --quiet; then
-                log "服务重启成功"
-                break
-            fi
-            sleep 5
-            WAIT_COUNT=$((WAIT_COUNT + 1))
-        done
-        
-        # 验证新凭据
-        if test_mqtt_auth "$NEW_MQTT_USER" "$NEW_MQTT_PASS"; then
-            log "✅ 新凭据验证成功"
-            mqtt_report "isg/autocheck/$SERVICE_ID/status" "{\"status\":\"credentials_updated\",\"message\":\"MQTT credentials updated and verified\",\"new_user\":\"$NEW_MQTT_USER\",\"timestamp\":$(date +%s)}"
+        WAIT_COUNT=$((WAIT_COUNT + 1))
+    done
+    
+    # 验证凭据是否生效
+    load_mqtt_conf  # 重新加载配置
+    if test_mqtt_auth "$MQTT_USER" "$MQTT_PASS"; then
+        log "✅ 凭据验证成功: $MQTT_USER"
+        if [ -n "$NEW_MQTT_USER" ] && [ -n "$NEW_MQTT_PASS" ]; then
+            mqtt_report "isg/autocheck/$SERVICE_ID/status" "{\"status\":\"credentials_updated\",\"message\":\"MQTT credentials updated and verified\",\"new_user\":\"$MQTT_USER\",\"timestamp\":$(date +%s)}"
         else
-            log "❌ 新凭据验证失败"
-            RESULT_STATUS="problem"
+            mqtt_report "isg/autocheck/$SERVICE_ID/status" "{\"status\":\"credentials_synced\",\"message\":\"MQTT credentials synchronized with config\",\"user\":\"$MQTT_USER\",\"timestamp\":$(date +%s)}"
         fi
     else
-        log "凭据更新失败"
+        log "❌ 凭据验证失败: $MQTT_USER"
         RESULT_STATUS="problem"
+        mqtt_report "isg/autocheck/$SERVICE_ID/status" "{\"status\":\"problem\",\"message\":\"credential verification failed after update\",\"user\":\"$MQTT_USER\",\"timestamp\":$(date +%s)}"
     fi
 fi
 
@@ -561,6 +651,12 @@ STATUS_MESSAGE=$(generate_status_message "$RUN_STATUS")
 # -----------------------------------------------------------------------------
 log "autocheck 完成"
 
+# 检查最终的凭据一致性状态
+CREDENTIALS_CONSISTENT=true
+if ! verify_credentials_consistency; then
+    CREDENTIALS_CONSISTENT=false
+fi
+
 # 构建最终状态消息
 FINAL_MESSAGE="{"
 FINAL_MESSAGE="$FINAL_MESSAGE\"status\":\"$RESULT_STATUS\","
@@ -576,6 +672,8 @@ FINAL_MESSAGE="$FINAL_MESSAGE\"update_info\":\"$UPDATE_INFO\","
 FINAL_MESSAGE="$FINAL_MESSAGE\"message\":\"$STATUS_MESSAGE\","
 FINAL_MESSAGE="$FINAL_MESSAGE\"connectivity\":\"$CONNECTIVITY_STATUS\","
 FINAL_MESSAGE="$FINAL_MESSAGE\"restart_detected\":$RESTART_DETECTED,"
+FINAL_MESSAGE="$FINAL_MESSAGE\"credentials_consistent\":$CREDENTIALS_CONSISTENT,"
+FINAL_MESSAGE="$FINAL_MESSAGE\"credentials_updated\":$CREDENTIALS_UPDATED,"
 FINAL_MESSAGE="$FINAL_MESSAGE\"timestamp\":$NOW"
 FINAL_MESSAGE="$FINAL_MESSAGE}"
 
