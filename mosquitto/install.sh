@@ -171,11 +171,14 @@ mqtt_report_to_file "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\"
 # -----------------------------------------------------------------------------
 # 安装 Mosquitto 包
 # -----------------------------------------------------------------------------
-log "更新包管理器并安装 mosquitto"
-mqtt_report_to_file "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"installing mosquitto package\",\"timestamp\":$(date +%s)}"
+log "更新包管理器"
+if ! pkg update; then
+    log "包管理器更新失败，继续尝试安装依赖"
+fi
 
-if ! pkg update && pkg install -y "${DEPS_ARRAY[@]}"; then
-    log "mosquitto 安装失败"
+log "安装依赖包: ${DEPS_ARRAY[*]}"
+if ! pkg install -y "${DEPS_ARRAY[@]}"; then
+    log "mosquitto 及依赖安装失败"
     mqtt_report_to_file "isg/install/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"package installation failed\",\"timestamp\":$(date +%s)}"
     record_install_history "FAILED" "unknown"
     exit 1
