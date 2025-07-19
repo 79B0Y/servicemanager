@@ -237,7 +237,7 @@ if [[ "$EXT_LOWER" == "zip" ]]; then
     log "检测到 zip 文件，转换为 tar.gz"
     mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"restoring\",\"method\":\"$METHOD\",\"file\":\"$RESTORE_FILE\",\"converting_zip\":true}"
     
-    TEMP_DIR="/tmp/mosquitto_restore_$$"
+    TEMP_DIR="/data/data/com.termux/files/usr/tmp/mosquitto_restore_$"
     CONVERTED_FILE="$BACKUP_DIR/mosquitto_converted_$(date +%Y%m%d-%H%M%S).tar.gz"
     
     # 创建临时目录并解压
