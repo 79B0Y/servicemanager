@@ -66,10 +66,19 @@ load_mqtt_conf() {
     fi
 }
 
-mqtt_report_to_file() {
+mqtt_report() {
     local topic="$1"
     local payload="$2"
-    echo "[$(date '+%F %T')] [MQTT-PENDING] $topic -> $payload" >> "$LOG_FILE"
+    
+    # 检查 MQTT broker 是否可用
+    if ! nc -z 127.0.0.1 1883 2>/dev/null; then
+        echo "[$(date '+%F %T')] [MQTT-OFFLINE] $topic -> $payload" >> "$LOG_FILE"
+        return 0
+    fi
+    
+    load_mqtt_conf
+    mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT_CONFIG" -u "$MQTT_USER" -P "$MQTT_PASS" -t "$topic" -m "$payload" 2>/dev/null || true
+    echo "[$(date '+%F %T')] [MQTT] $topic -> $payload" >> "$LOG_FILE"
 }
 
 get_nr_pid() {
@@ -108,13 +117,13 @@ START_TIME=$(date +%s)
 ensure_directories
 
 log "开始安装 node-red"
-mqtt_report_to_file "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"starting installation process\",\"timestamp\":$(date +%s)}"
+mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"starting installation process\",\"timestamp\":$(date +%s)}"
 
 # -----------------------------------------------------------------------------
 # 读取服务依赖配置
 # -----------------------------------------------------------------------------
 log "读取服务依赖配置"
-mqtt_report_to_file "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"reading service dependencies from serviceupdate.json\",\"timestamp\":$(date +%s)}"
+mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"reading service dependencies from serviceupdate.json\",\"timestamp\":$(date +%s)}"
 
 if [ ! -f "$SERVICEUPDATE_FILE" ]; then
     log "serviceupdate.json 不存在，使用默认依赖"
@@ -127,13 +136,13 @@ fi
 DEPS_ARRAY=($(echo "$DEPENDENCIES" | jq -r '.[]' 2>/dev/null || echo "nodejs npm"))
 
 log "安装系统依赖: ${DEPS_ARRAY[*]}"
-mqtt_report_to_file "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"installing system dependencies\",\"dependencies\":$DEPENDENCIES,\"timestamp\":$(date +%s)}"
+mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"installing system dependencies\",\"dependencies\":$DEPENDENCIES,\"timestamp\":$(date +%s)}"
 
 # -----------------------------------------------------------------------------
 # 安装系统依赖（在 proot 容器内）
 # -----------------------------------------------------------------------------
 log "在 proot 容器内安装系统依赖"
-mqtt_report_to_file "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"installing system dependencies in proot container\",\"timestamp\":$(date +%s)}"
+mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"installing system dependencies in proot container\",\"timestamp\":$(date +%s)}"
 
 if ! proot-distro login "$PROOT_DISTRO" -- bash -c "
     source ~/.bashrc
@@ -141,7 +150,7 @@ if ! proot-distro login "$PROOT_DISTRO" -- bash -c "
     apt install -y ${DEPS_ARRAY[*]}
 "; then
     log "系统依赖安装失败"
-    mqtt_report_to_file "isg/install/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"dependency installation failed\",\"dependencies\":$DEPENDENCIES,\"timestamp\":$(date +%s)}"
+    mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"dependency installation failed\",\"dependencies\":$DEPENDENCIES,\"timestamp\":$(date +%s)}"
     record_install_history "FAILED" "unknown"
     exit 1
 fi
@@ -150,7 +159,7 @@ fi
 # 检查 Node.js 和 npm 版本
 # -----------------------------------------------------------------------------
 log "检查 Node.js 和 npm 版本"
-mqtt_report_to_file "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"checking node.js and npm versions\",\"timestamp\":$(date +%s)}"
+mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"checking node.js and npm versions\",\"timestamp\":$(date +%s)}"
 
 NODE_VERSION=$(proot-distro login "$PROOT_DISTRO" -- bash -c "source ~/.bashrc && node -v" 2>/dev/null || echo "not installed")
 NPM_VERSION=$(proot-distro login "$PROOT_DISTRO" -- bash -c "source ~/.bashrc && npm -v" 2>/dev/null || echo "not installed")
@@ -160,7 +169,7 @@ log "npm 版本: $NPM_VERSION"
 
 if [[ "$NODE_VERSION" == "not installed" ]] || [[ "$NPM_VERSION" == "not installed" ]]; then
     log "Node.js 或 npm 未正确安装"
-    mqtt_report_to_file "isg/install/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"node.js or npm not properly installed\",\"timestamp\":$(date +%s)}"
+    mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"node.js or npm not properly installed\",\"timestamp\":$(date +%s)}"
     record_install_history "FAILED" "unknown"
     exit 1
 fi
@@ -169,11 +178,11 @@ fi
 # 安装 pnpm 包管理器
 # -----------------------------------------------------------------------------
 log "安装 pnpm 包管理器"
-mqtt_report_to_file "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"installing pnpm package manager\",\"timestamp\":$(date +%s)}"
+mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"installing pnpm package manager\",\"timestamp\":$(date +%s)}"
 
 if ! proot-distro login "$PROOT_DISTRO" -- bash -c "source ~/.bashrc && npm install -g pnpm"; then
     log "pnpm 安装失败"
-    mqtt_report_to_file "isg/install/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"pnpm installation failed\",\"timestamp\":$(date +%s)}"
+    mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"pnpm installation failed\",\"timestamp\":$(date +%s)}"
     record_install_history "FAILED" "unknown"
     exit 1
 fi
@@ -193,7 +202,7 @@ fi
 # 创建安装目录并安装 Node-RED
 # -----------------------------------------------------------------------------
 log "创建安装目录并安装 Node-RED"
-mqtt_report_to_file "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"installing node-red application\",\"timestamp\":$(date +%s)}"
+mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"installing node-red application\",\"timestamp\":$(date +%s)}"
 
 if ! proot-distro login "$PROOT_DISTRO" -- bash -c "
     source ~/.bashrc
@@ -202,7 +211,7 @@ if ! proot-distro login "$PROOT_DISTRO" -- bash -c "
     pnpm add node-red@$TARGET_VERSION
 "; then
     log "Node-RED 安装失败"
-    mqtt_report_to_file "isg/install/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"node-red installation failed\",\"timestamp\":$(date +%s)}"
+    mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"node-red installation failed\",\"timestamp\":$(date +%s)}"
     record_install_history "FAILED" "unknown"
     exit 1
 fi
@@ -211,7 +220,7 @@ fi
 # 生成 package.json
 # -----------------------------------------------------------------------------
 log "生成 package.json 用于服务管理"
-mqtt_report_to_file "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"generating package.json\",\"timestamp\":$(date +%s)}"
+mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"generating package.json\",\"timestamp\":$(date +%s)}"
 
 proot-distro login "$PROOT_DISTRO" -- bash -c "
 cd $NR_INSTALL_DIR
@@ -235,7 +244,7 @@ log "Node-RED 版本: $VERSION_STR"
 # 创建数据目录
 # -----------------------------------------------------------------------------
 log "创建 Node-RED 数据目录"
-mqtt_report_to_file "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"creating data directory\",\"timestamp\":$(date +%s)}"
+mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"creating data directory\",\"timestamp\":$(date +%s)}"
 
 proot-distro login "$PROOT_DISTRO" -- mkdir -p "$NR_DATA_DIR"
 
@@ -243,7 +252,7 @@ proot-distro login "$PROOT_DISTRO" -- mkdir -p "$NR_DATA_DIR"
 # 注册 servicemonitor 服务看护
 # -----------------------------------------------------------------------------
 log "注册 isgservicemonitor 服务"
-mqtt_report_to_file "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"registering service monitor\",\"timestamp\":$(date +%s)}"
+mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"registering service monitor\",\"timestamp\":$(date +%s)}"
 
 # 创建 run 文件
 cat > "$RUN_FILE" << EOF
@@ -265,7 +274,7 @@ log "已创建 run 和 down 文件"
 # 启动服务进行测试
 # -----------------------------------------------------------------------------
 log "启动服务进行测试"
-mqtt_report_to_file "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"starting service for testing\",\"timestamp\":$(date +%s)}"
+mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"starting service for testing\",\"timestamp\":$(date +%s)}"
 
 # 启动服务
 if [ -e "$SERVICE_CONTROL_DIR/supervise/control" ]; then
@@ -281,7 +290,7 @@ fi
 # 等待服务启动并验证
 # -----------------------------------------------------------------------------
 log "等待服务启动"
-mqtt_report_to_file "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"waiting for service ready\",\"timestamp\":$(date +%s)}"
+mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"waiting for service ready\",\"timestamp\":$(date +%s)}"
 
 WAITED=0
 while [ "$WAITED" -lt "$MAX_WAIT" ]; do
@@ -295,7 +304,7 @@ done
 
 if [ "$WAITED" -ge "$MAX_WAIT" ]; then
     log "超时: Node-RED 在 ${MAX_WAIT}s 后仍未启动"
-    mqtt_report_to_file "isg/install/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"service start timeout after installation\",\"timeout\":$MAX_WAIT,\"timestamp\":$(date +%s)}"
+    mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"service start timeout after installation\",\"timeout\":$MAX_WAIT,\"timestamp\":$(date +%s)}"
     record_install_history "FAILED" "$VERSION_STR"
     exit 1
 fi
@@ -334,7 +343,7 @@ sleep 2
 # 记录安装历史和版本信息
 # -----------------------------------------------------------------------------
 log "记录安装历史"
-mqtt_report_to_file "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"recording installation history\",\"version\":\"$VERSION_STR\",\"timestamp\":$(date +%s)}"
+mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"recording installation history\",\"version\":\"$VERSION_STR\",\"timestamp\":$(date +%s)}"
 
 echo "$VERSION_STR" > "$VERSION_FILE"
 record_install_history "SUCCESS" "$VERSION_STR"
@@ -346,7 +355,7 @@ END_TIME=$(date +%s)
 DURATION=$((END_TIME - START_TIME))
 
 log "Node-RED 安装完成，耗时 ${DURATION}s"
-mqtt_report_to_file "isg/install/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"installed\",\"version\":\"$VERSION_STR\",\"duration\":$DURATION,\"timestamp\":$END_TIME}"
+mqtt_report "isg/install/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"installed\",\"version\":\"$VERSION_STR\",\"duration\":$DURATION,\"timestamp\":$END_TIME}"
 
 log "安装摘要:"
 log "  - 版本: $VERSION_STR"
