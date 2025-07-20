@@ -21,7 +21,7 @@ logging.basicConfig(
     ]
 )
 
-# 探测参数F
+# 探测参数
 timeout = 2
 probe_sleep = 0.5
 retry_delay = 1
@@ -150,7 +150,15 @@ def probe_device(port_info):
 
     if not result['raw_response']:
         result['busy'] = True
-        result['occupied_processes'] = check_port_usage(port)
+        occupied = check_port_usage(port)
+        result['occupied_processes'] = occupied
+
+        # 如果被占用的进程包含 zwave-js-ui，直接标记为 zwave
+        for cmdline in occupied.values():
+            if 'zwave-js-ui' in cmdline:
+                result['type'] = 'zwave'
+                logging.info(f"通过进程占用识别为 Z-Wave: {port}")
+                break
 
     mqtt_report("isg/serial/scan", {**result, "status": result['type'] + '_detected' if result['type'] != 'unknown' else 'unknown_device'})
     return result
