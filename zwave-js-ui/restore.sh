@@ -21,7 +21,7 @@ SERIAL_RESULT_FILE="/sdcard/isgbackup/serialport/latest.json"
 log() { echo "[$(date '+%F %T')] $*"; }
 
 mqtt_report() {
-    mosquitto_pub -h "127.0.0.1" -p 1883 -t "$1" -m "$2" || true
+    mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" -u "$MQTT_USER" -P "$MQTT_PASS" -t "$1" -m "$2" || true
 }
 
 is_service_running() {
@@ -195,6 +195,7 @@ EOF
 }
 
 log "🚀 执行还原流程"
+load_mqtt_conf
 mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"running\",\"timestamp\":$(date +%s)}"
 
 if [ -n "$CUSTOM_BACKUP_FILE" ] && [ -f "$CUSTOM_BACKUP_FILE" ]; then
