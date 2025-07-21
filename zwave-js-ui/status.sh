@@ -1,8 +1,8 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
-# Z-Wave JS UI 状态查询脚本
-# 版本: v1.0.0
-# 功能: 检查服务运行状态和 HTTP 接口状态
+# Z-Wave JS UI 状态查询脚本（优化版）
+# 版本: v1.0.1
+# 功能: 检查服务运行状态和 HTTP 接口状态，优化安装检测速度
 # =============================================================================
 
 set -euo pipefail
@@ -20,9 +20,8 @@ LOG_FILE="$LOG_DIR/status.log"
 
 PROOT_DISTRO="${PROOT_DISTRO:-ubuntu}"
 ZUI_INSTALL_PATH="/root/.pnpm-global/global/5/node_modules/zwave-js-ui"
-ZUI_PACKAGE_FILE="$ZUI_INSTALL_PATH/package.json"
 ZUI_PORT="8091"
-HTTP_TIMEOUT="10"
+HTTP_TIMEOUT="5"
 
 # -----------------------------------------------------------------------------
 # 辅助函数
@@ -78,58 +77,69 @@ mqtt_report() {
 }
 
 # -----------------------------------------------------------------------------
-# 主状态检查流程
+# 快速检查安装状态（优化版）
 # -----------------------------------------------------------------------------
-ensure_directories
-
-# -----------------------------------------------------------------------------
-# 检查安装状态
-# -----------------------------------------------------------------------------
-INSTALL_STATUS=false
-ZUI_VERSION="unknown"
-
-# 通过版本号检查程序是否安装
-if proot-distro login "$PROOT_DISTRO" -- test -f "$ZUI_PACKAGE_FILE" 2>/dev/null; then
-    ZUI_VERSION=$(proot-distro login "$PROOT_DISTRO" -- bash -c "
-        export PNPM_HOME=/root/.pnpm-global
-        export PATH=\$PNPM_HOME:\$PATH
-        export SHELL=/bin/bash
-        source ~/.bashrc 2>/dev/null || true
-        
-        if [ -f '$ZUI_PACKAGE_FILE' ]; then
-            grep '\"version\"' '$ZUI_PACKAGE_FILE' | head -n1 | sed -E 's/.*\"version\": *\"([^\"]+)\".*/\1/'
-        else
-            echo 'unknown'
-        fi
-    " 2>/dev/null || echo "unknown")
-    
-    if [ "$ZUI_VERSION" != "unknown" ] && [ -n "$ZUI_VERSION" ]; then
-        INSTALL_STATUS=true
-        log "Z-Wave JS UI 已安装，版本: $ZUI_VERSION"
-    else
-        log "Z-Wave JS UI 安装目录存在但无法获取版本信息"
+check_installation_fast() {
+    # 方法1: 检查安装目录是否存在（最快）
+    if proot-distro login "$PROOT_DISTRO" -- test -d "$ZUI_INSTALL_PATH" 2>/dev/null; then
+        return 0
     fi
-else
-    # 如果文件不存在，检查是否通过其他方式安装（比如全局包）
-    ZUI_VERSION=$(proot-distro login "$PROOT_DISTRO" -- bash -c "
+    
+    # 方法2: 检查 pnpm 全局包列表（快速检查）
+    local pnpm_check=$(proot-distro login "$PROOT_DISTRO" -- bash -c "
         export PNPM_HOME=/root/.pnpm-global
         export PATH=\$PNPM_HOME:\$PATH
         export SHELL=/bin/bash
         source ~/.bashrc 2>/dev/null || true
         
         if command -v pnpm >/dev/null 2>&1; then
-            pnpm list -g zwave-js-ui 2>/dev/null | grep zwave-js-ui | sed -E 's/.*zwave-js-ui@([0-9.]+).*/\1/' || echo 'unknown'
+            pnpm list -g --depth=0 2>/dev/null | grep -q 'zwave-js-ui' && echo 'installed' || echo 'not_installed'
+        else
+            echo 'not_installed'
+        fi
+    " 2>/dev/null || echo "not_installed")
+    
+    [ "$pnpm_check" = "installed" ]
+}
+
+get_version_fast() {
+    # 优先从 package.json 获取（最快）
+    local version=$(proot-distro login "$PROOT_DISTRO" -- bash -c "
+        if [ -f '$ZUI_INSTALL_PATH/package.json' ]; then
+            grep '\"version\"' '$ZUI_INSTALL_PATH/package.json' | head -n1 | sed -E 's/.*\"version\": *\"([^\"]+)\".*/\1/'
         else
             echo 'unknown'
         fi
     " 2>/dev/null || echo "unknown")
     
-    if [ "$ZUI_VERSION" != "unknown" ] && [ -n "$ZUI_VERSION" ]; then
-        INSTALL_STATUS=true
-        log "Z-Wave JS UI 已安装 (全局包)，版本: $ZUI_VERSION"
-    else
-        log "Z-Wave JS UI 未安装"
-    fi
+    echo "$version"
+}
+
+# -----------------------------------------------------------------------------
+# 主状态检查流程
+# -----------------------------------------------------------------------------
+ensure_directories
+
+# -----------------------------------------------------------------------------
+# 检查安装状态（快速检测）
+# -----------------------------------------------------------------------------
+INSTALL_STATUS=false
+ZUI_VERSION="unknown"
+
+if check_installation_fast; then
+    INSTALL_STATUS=true
+    # 只有在需要详细信息时才获取版本
+    case "${1:-}" in
+        --json|--verbose)
+            ZUI_VERSION=$(get_version_fast)
+            ;;
+        *)
+            ZUI_VERSION="installed"
+            ;;
+    esac
+    log "Z-Wave JS UI 已安装"
+else
+    log "Z-Wave JS UI 未安装"
 fi
 
 # -----------------------------------------------------------------------------
@@ -139,10 +149,12 @@ PID=$(get_zui_pid || true)
 RUNTIME=""
 HTTP_STATUS="offline"
 ZWAVE_STATUS="unknown"
+STATUS="stopped"
+EXIT=1
 
 if [ -n "$PID" ]; then
     # 获取运行时间
-    RUNTIME=$(ps -o etime= -p "$PID" | xargs)
+    RUNTIME=$(ps -o etime= -p "$PID" 2>/dev/null | xargs || echo "")
     
     # 检查 HTTP 接口状态
     if timeout "$HTTP_TIMEOUT" nc -z 127.0.0.1 "$ZUI_PORT" 2>/dev/null; then
@@ -151,8 +163,7 @@ if [ -n "$PID" ]; then
         EXIT=0
         
         # 检查 Z-Wave 状态 (简单的 HTTP 检查)
-        # Z-Wave JS UI 通常在正常运行时会响应 HTTP 请求
-        if timeout 5 curl -s "http://127.0.0.1:$ZUI_PORT" >/dev/null 2>&1; then
+        if timeout 3 curl -s "http://127.0.0.1:$ZUI_PORT" >/dev/null 2>&1; then
             ZWAVE_STATUS="online"
         else
             ZWAVE_STATUS="starting"
@@ -163,8 +174,14 @@ if [ -n "$PID" ]; then
         EXIT=2
     fi
 else
-    STATUS="stopped"
-    EXIT=1
+    # 检查是否有启动脚本正在运行
+    if pgrep -f "$SERVICE_DIR/start.sh" > /dev/null 2>&1; then
+        STATUS="starting"
+        EXIT=2
+    else
+        STATUS="stopped"
+        EXIT=1
+    fi
     HTTP_STATUS="offline"
     ZWAVE_STATUS="offline"
 fi
@@ -180,6 +197,14 @@ case "${1:-}" in
     --quiet)
         exit $EXIT
         ;;
+    --check-install)
+        echo "$INSTALL_STATUS"
+        exit 0
+        ;;
+    --simple)
+        echo "$STATUS"
+        exit $EXIT
+        ;;
     *)
         ;;
 esac
@@ -190,7 +215,8 @@ esac
 TS=$(date +%s)
 if [ "$STATUS" = "running" ]; then
     mqtt_report "isg/status/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"running\",\"pid\":$PID,\"runtime\":\"$RUNTIME\",\"http_status\":\"$HTTP_STATUS\",\"zwave_status\":\"$ZWAVE_STATUS\",\"port\":\"$ZUI_PORT\",\"install\":$INSTALL_STATUS,\"version\":\"$ZUI_VERSION\",\"timestamp\":$TS}"
-    log "Z-Wave JS UI 运行中 (PID=$PID, 运行时间=$RUNTIME, HTTP状态=$HTTP_STATUS, Z-Wave状态=$ZWAVE_STATUS, 端口=$ZUI_PORT, 版本=$ZUI_VERSION)"
+    
+    log "Z-Wave JS UI 运行中 (PID=$PID, 运行时间=$RUNTIME, HTTP状态=$HTTP_STATUS, Z-Wave状态=$ZWAVE_STATUS, 端口=$ZUI_PORT)"
     
     # 显示详细的状态信息
     if [ "$HTTP_STATUS" = "online" ]; then
@@ -222,12 +248,24 @@ if [ "$STATUS" = "running" ]; then
         fi
     fi
     
+    # 标准化输出最后一行状态
+    echo "running"
+    
 elif [ "$STATUS" = "starting" ]; then
-    mqtt_report "isg/status/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"starting\",\"pid\":$PID,\"runtime\":\"$RUNTIME\",\"http_status\":\"$HTTP_STATUS\",\"zwave_status\":\"$ZWAVE_STATUS\",\"port\":\"$ZUI_PORT\",\"install\":$INSTALL_STATUS,\"version\":\"$ZUI_VERSION\",\"timestamp\":$TS}"
-    log "Z-Wave JS UI 启动中 (PID=$PID, HTTP状态=$HTTP_STATUS, Z-Wave状态=$ZWAVE_STATUS, 版本=$ZUI_VERSION)"
+    mqtt_report "isg/status/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"starting\",\"pid\":\"$PID\",\"runtime\":\"$RUNTIME\",\"http_status\":\"$HTTP_STATUS\",\"zwave_status\":\"$ZWAVE_STATUS\",\"port\":\"$ZUI_PORT\",\"install\":$INSTALL_STATUS,\"version\":\"$ZUI_VERSION\",\"timestamp\":$TS}"
+    
+    log "Z-Wave JS UI 启动中 (PID=$PID, HTTP状态=$HTTP_STATUS, Z-Wave状态=$ZWAVE_STATUS)"
+    
+    # 标准化输出最后一行状态
+    echo "starting"
+    
 else
     mqtt_report "isg/status/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"stopped\",\"install\":$INSTALL_STATUS,\"version\":\"$ZUI_VERSION\",\"message\":\"service not running\",\"timestamp\":$TS}"
-    log "Z-Wave JS UI 未运行 (安装状态=$INSTALL_STATUS, 版本=$ZUI_VERSION)"
+    
+    log "Z-Wave JS UI 未运行 (安装状态=$INSTALL_STATUS)"
+    
+    # 标准化输出最后一行状态
+    echo "stopped"
 fi
 
 exit $EXIT
