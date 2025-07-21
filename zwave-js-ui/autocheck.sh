@@ -155,8 +155,8 @@ get_improved_run_status() {
         return
     fi
     
-    # 调用 status.sh 检查实际运行状态，使用 --quiet 只返回退出码
-    if bash "$SERVICE_DIR/status.sh" --quiet; then
+    # 直接检查服务状态，不调用 status.sh 避免日志混入
+    if get_zui_pid > /dev/null 2>&1; then
         echo "running"
     else
         echo "stopped"
