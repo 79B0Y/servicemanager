@@ -1,7 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
 # Z-Wave JS UI 自检脚本
-# 版本: v1.0.1
+# 版本: v1.0.2
 # 功能: 单服务自检、性能监控和健康检查，汇总所有脚本状态
 # =============================================================================
 
@@ -29,7 +29,7 @@ UPDATE_HISTORY_FILE="$BACKUP_DIR/.update_history"
 
 PROOT_DISTRO="${PROOT_DISTRO:-ubuntu}"
 ZUI_INSTALL_PATH="/root/.pnpm-global/global/5/node_modules/zwave-js-ui"
-ZUI_DATA_DIR="/usr/src/app/store"
+ZUI_DATA_DIR="/root/.pnpm-global/global/5/node_modules/zwave-js-ui/store"
 ZUI_CONFIG_FILE="$ZUI_DATA_DIR/settings.json"
 ZUI_PORT="8091"
 
@@ -211,8 +211,10 @@ get_improved_backup_status() {
     fi
     
     # 检查备份目录是否有备份文件
-    local backup_files=$(ls -1 "$BACKUP_DIR"/zwave-js-ui_backup_*.tar.gz 2>/dev/null | wc -l)
-    backup_files=${backup_files:-0}
+    local backup_files=0
+    if ls "$BACKUP_DIR"/zwave-js-ui_backup_*.tar.gz >/dev/null 2>&1; then
+        backup_files=$(ls -1 "$BACKUP_DIR"/zwave-js-ui_backup_*.tar.gz 2>/dev/null | wc -l)
+    fi
     
     if [ "$backup_files" -gt 0 ]; then
         echo "success"
@@ -538,7 +540,7 @@ STATUS_MESSAGE=$(generate_status_message "$RUN_STATUS")
 # -----------------------------------------------------------------------------
 log "autocheck 完成"
 
-# 简化 run 状态显示
+# 简化 run 状态显示：只显示 running, stopped, disabled
 FINAL_RUN_STATUS="$RUN_STATUS"
 case "$RUN_STATUS" in
     "starting"|"stopping"|"failed")
