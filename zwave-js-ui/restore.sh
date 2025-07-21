@@ -254,9 +254,9 @@ mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"started\",\"message\
 # 检查备份文件
 log "🔍 检查备份文件"
 LATEST_BACKUP=""
-# 使用更安全的方式检查备份文件，避免 set -e 导致的退出
-if ls "$BACKUP_DIR"/*.tar.gz >/dev/null 2>&1 || ls "$BACKUP_DIR"/*.zip >/dev/null 2>&1; then
-    LATEST_BACKUP=$(ls -1t "$BACKUP_DIR"/*.tar.gz "$BACKUP_DIR"/*.zip 2>/dev/null | head -n1)
+# 只检查 tar.gz 文件
+if ls "$BACKUP_DIR"/*.tar.gz >/dev/null 2>&1; then
+    LATEST_BACKUP=$(ls -1t "$BACKUP_DIR"/*.tar.gz 2>/dev/null | head -n1)
 fi
 log "📋 备份文件检查结果: LATEST_BACKUP=[$LATEST_BACKUP]"
 log "📋 用户指定备份: CUSTOM_BACKUP_FILE=[$CUSTOM_BACKUP_FILE]"
