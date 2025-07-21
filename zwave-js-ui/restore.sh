@@ -252,7 +252,10 @@ load_mqtt_conf
 mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"started\",\"message\":\"restore process initiated\",\"timestamp\":$START_TIME}"
 
 # 检查备份文件
+log "🔍 检查备份文件"
 LATEST_BACKUP=$(ls -1t "$BACKUP_DIR"/*.{tar.gz,zip} 2>/dev/null | head -n1)
+log "📋 备份文件检查结果: LATEST_BACKUP=[$LATEST_BACKUP]"
+log "📋 用户指定备份: CUSTOM_BACKUP_FILE=[$CUSTOM_BACKUP_FILE]"
 
 if [ -n "$CUSTOM_BACKUP_FILE" ] && [ -f "$CUSTOM_BACKUP_FILE" ]; then
     log "📦 还原自用户指定文件: $CUSTOM_BACKUP_FILE"
