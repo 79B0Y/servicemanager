@@ -266,40 +266,34 @@ get_improved_restore_status() {
 
 get_config_info() {
     if ! proot-distro login "$PROOT_DISTRO" -- test -f "$ZUI_CONFIG_FILE" 2>/dev/null; then
-        echo '{"error": "Settings file not found"}'
+        echo '{"web_port":8091,"serial_port":"unknown","serial_exists":false,"detection_method":"unknown","mqtt_host":"127.0.0.1","mqtt_port":1883,"mqtt_user":"admin","hass_discovery":false}'
         return
     fi
-    
-    local config_json=$(proot-distro login "$PROOT_DISTRO" -- bash -c "
-        if [ -f '$ZUI_CONFIG_FILE' ]; then
-            # 提取基本配置信息
-            web_port=\$(grep '\"port\"' '$ZUI_CONFIG_FILE' | grep -v 'serverPort' | head -n1 | sed -E 's/.*\"port\": *\"?([^,\"]*).*/\1/' || echo '8091')
-            serial_port=\$(grep -A5 -B5 'zwave' '$ZUI_CONFIG_FILE' | grep '\"port\"' | sed -E 's/.*\"port\": *\"([^\"]*)\".*/\1/' || echo 'unknown')
-            mqtt_host=\$(grep -A10 'mqtt' '$ZUI_CONFIG_FILE' | grep '\"host\"' | sed -E 's/.*\"host\": *\"([^\"]*)\".*/\1/' || echo 'localhost')
-            mqtt_user=\$(grep -A10 'mqtt' '$ZUI_CONFIG_FILE' | grep '\"username\"' | sed -E 's/.*\"username\": *\"([^\"]*)\".*/\1/' || echo '')
-            mqtt_port=\$(grep -A10 'mqtt' '$ZUI_CONFIG_FILE' | grep '\"port\"' | sed -E 's/.*\"port\": *([0-9]+).*/\1/' || echo '1883')
-            hass_discovery=\$(grep 'hassDiscovery' '$ZUI_CONFIG_FILE' | sed -E 's/.*\"hassDiscovery\": *(true|false).*/\1/' || echo 'false')
-            
-            # 检查串口设备是否存在
-            serial_exists='false'
-            if [ -e \"\$serial_port\" ]; then
-                serial_exists='true'
-            fi
-            
-            # 判断串口探测方法
-            detection_method='unknown'
-            if [ -f '/data/data/com.termux/files/home/servicemanager/detect_serial_adapters.py' ]; then
-                detection_method='script_available'
-            else
-                detection_method='manual'
-            fi
-            
-            echo \"{\\\"web_port\\\":\\\"\$web_port\\\",\\\"serial_port\\\":\\\"\$serial_port\\\",\\\"serial_exists\\\":\$serial_exists,\\\"detection_method\\\":\\\"\$detection_method\\\",\\\"mqtt_host\\\":\\\"\$mqtt_host\\\",\\\"mqtt_port\\\":\$mqtt_port,\\\"mqtt_user\\\":\\\"\$mqtt_user\\\",\\\"hass_discovery\\\":\$hass_discovery}\"
-        else
-            echo '{\"error\": \"Settings file not accessible\"}'
-        fi
-    " 2>/dev/null || echo '{"error": "Config not accessible"}')
-    
+
+    local config_json=$(proot-distro login "$PROOT_DISTRO" -- python3 -c "
+import json, os
+try:
+    with open('$ZUI_CONFIG_FILE') as f:
+        cfg = json.load(f)
+    result = {
+        'web_port': cfg.get('gateway', {}).get('port', 8091),
+        'serial_port': cfg.get('zwave', {}).get('port', 'unknown'),
+        'serial_exists': os.path.exists(cfg.get('zwave', {}).get('port', '')),
+        'detection_method': 'script_available' if os.path.exists('$BASE_DIR/detect_serial_adapters.py') else 'manual',
+        'mqtt_host': cfg.get('mqtt', {}).get('host', '127.0.0.1'),
+        'mqtt_port': cfg.get('mqtt', {}).get('port', 1883),
+        'mqtt_user': cfg.get('mqtt', {}).get('username', 'admin'),
+        'hass_discovery': cfg.get('gateway', {}).get('hassDiscovery', False)
+    }
+    print(json.dumps(result))
+except Exception as e:
+    print('{\"error\": \"failed to parse config\"}')
+")
+
+    if [ -z "$config_json" ] || [[ "$config_json" == *"error"* ]]; then
+        config_json='{"web_port":8091,"serial_port":"unknown","serial_exists":false,"detection_method":"error","mqtt_host":"127.0.0.1","mqtt_port":1883,"mqtt_user":"admin","hass_discovery":false}'
+    fi
+
     echo "$config_json"
 }
 
