@@ -16,7 +16,7 @@ BASE_DIR="/data/data/com.termux/files/home/servicemanager"
 SERVICE_DIR="$BASE_DIR/$SERVICE_ID"
 
 CONFIG_FILE="$BASE_DIR/configuration.yaml"
-ZWAVE_INSTALL_DIR="/root/.local/share/pnpm/global/5/node_modules/zwave-js-ui"
+ZWAVE_INSTALL_DIR="/root/.pnpm-global/global/5/node_modules/zwave-js-ui"
 ZWAVE_STORE_DIR="$ZWAVE_INSTALL_DIR/store"
 
 LOG_DIR="$SERVICE_DIR/logs"
