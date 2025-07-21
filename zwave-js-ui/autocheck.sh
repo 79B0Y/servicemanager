@@ -1,7 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
 # Z-Wave JS UI 自检脚本
-# 版本: v1.0.0
+# 版本: v1.0.1
 # 功能: 单服务自检、性能监控和健康检查，汇总所有脚本状态
 # =============================================================================
 
@@ -292,17 +292,6 @@ get_config_info() {
             fi
             
             echo \"{\\\"port\\\":\\\"\$port\\\",\\\"serial_port\\\":\\\"\$serial_port\\\",\\\"serial_exists\\\":\$serial_exists,\\\"detection_method\\\":\\\"\$detection_method\\\",\\\"mqtt_host\\\":\\\"\$mqtt_host\\\",\\\"mqtt_user\\\":\\\"\$mqtt_user\\\",\\\"hass_discovery\\\":\$hass_discovery}\"
-        else
-            echo '{\"error\": \"Settings file not accessible\"}'
-        fi
-    " 2>/dev/null || echo '{"error": "Config not accessible"}')
-    
-    echo "$config_json"
-}
-            mqtt_host=\$(grep 'mqtt.*host' '$ZUI_CONFIG_FILE' | sed -E 's/.*\"host\": *\"([^\"]*)\".*/\1/' || echo 'localhost')
-            mqtt_user=\$(grep 'mqtt.*username' '$ZUI_CONFIG_FILE' | sed -E 's/.*\"username\": *\"([^\"]*)\".*/\1/' || echo '')
-            
-            echo \"{\\\"port\\\":\\\"\$port\\\",\\\"serial_port\\\":\\\"\$serial_port\\\",\\\"mqtt_host\\\":\\\"\$mqtt_host\\\",\\\"mqtt_user\\\":\\\"\$mqtt_user\\\"}\"
         else
             echo '{\"error\": \"Settings file not accessible\"}'
         fi
