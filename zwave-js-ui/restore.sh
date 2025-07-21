@@ -208,6 +208,8 @@ elif LATEST_BACKUP=$(ls -1t "$BACKUP_DIR"/*.{tar.gz,zip} 2>/dev/null | head -n1)
     proot-distro login "$PROOT_DISTRO" -- bash -c "cp -r '$TERMUX_TMP_DIR/store' '$ZUI_DATA_DIR'"
 elif is_service_running; then
     log "✅ zwave-js-ui 已在运行，跳过配置生成"
+    mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"skipped\",\"message\":\"service already running, skipping restore\",\"timestamp\":$(date +%s)}"
+    exit 0
 else
     log "⚠️ 无备份，执行配置生成"
     if [ -f "$BASE_DIR/detect_serial_adapters.py" ]; then
