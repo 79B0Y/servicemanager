@@ -155,7 +155,7 @@ get_improved_run_status() {
         return
     fi
     
-    # 调用 status.sh 检查实际运行状态
+    # 调用 status.sh 检查实际运行状态，使用 --quiet 只返回退出码
     if bash "$SERVICE_DIR/status.sh" --quiet; then
         echo "running"
     else
