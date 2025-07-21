@@ -271,10 +271,11 @@ get_config_info() {
     local config_json=$(proot-distro login "$PROOT_DISTRO" -- bash -c "
         if [ -f '$ZUI_CONFIG_FILE' ]; then
             # 提取基本配置信息
-            port=\$(grep '\"port\"' '$ZUI_CONFIG_FILE' | grep -v 'serverPort' | head -n1 | sed -E 's/.*\"port\": *\"?([^,\"]*).*/\1/' || echo '8091')
-            serial_port=\$(grep 'zwave.*port' '$ZUI_CONFIG_FILE' | sed -E 's/.*\"port\": *\"([^\"]*)\".*/\1/' || echo 'unknown')
-            mqtt_host=\$(grep 'mqtt.*host' '$ZUI_CONFIG_FILE' | sed -E 's/.*\"host\": *\"([^\"]*)\".*/\1/' || echo 'localhost')
-            mqtt_user=\$(grep 'mqtt.*username' '$ZUI_CONFIG_FILE' | sed -E 's/.*\"username\": *\"([^\"]*)\".*/\1/' || echo '')
+            web_port=\$(grep '\"port\"' '$ZUI_CONFIG_FILE' | grep -v 'serverPort' | head -n1 | sed -E 's/.*\"port\": *\"?([^,\"]*).*/\1/' || echo '8091')
+            serial_port=\$(grep -A5 -B5 'zwave' '$ZUI_CONFIG_FILE' | grep '\"port\"' | sed -E 's/.*\"port\": *\"([^\"]*)\".*/\1/' || echo 'unknown')
+            mqtt_host=\$(grep -A10 'mqtt' '$ZUI_CONFIG_FILE' | grep '\"host\"' | sed -E 's/.*\"host\": *\"([^\"]*)\".*/\1/' || echo 'localhost')
+            mqtt_user=\$(grep -A10 'mqtt' '$ZUI_CONFIG_FILE' | grep '\"username\"' | sed -E 's/.*\"username\": *\"([^\"]*)\".*/\1/' || echo '')
+            mqtt_port=\$(grep -A10 'mqtt' '$ZUI_CONFIG_FILE' | grep '\"port\"' | sed -E 's/.*\"port\": *([0-9]+).*/\1/' || echo '1883')
             hass_discovery=\$(grep 'hassDiscovery' '$ZUI_CONFIG_FILE' | sed -E 's/.*\"hassDiscovery\": *(true|false).*/\1/' || echo 'false')
             
             # 检查串口设备是否存在
@@ -291,7 +292,7 @@ get_config_info() {
                 detection_method='manual'
             fi
             
-            echo \"{\\\"port\\\":\\\"\$port\\\",\\\"serial_port\\\":\\\"\$serial_port\\\",\\\"serial_exists\\\":\$serial_exists,\\\"detection_method\\\":\\\"\$detection_method\\\",\\\"mqtt_host\\\":\\\"\$mqtt_host\\\",\\\"mqtt_user\\\":\\\"\$mqtt_user\\\",\\\"hass_discovery\\\":\$hass_discovery}\"
+            echo \"{\\\"web_port\\\":\\\"\$web_port\\\",\\\"serial_port\\\":\\\"\$serial_port\\\",\\\"serial_exists\\\":\$serial_exists,\\\"detection_method\\\":\\\"\$detection_method\\\",\\\"mqtt_host\\\":\\\"\$mqtt_host\\\",\\\"mqtt_port\\\":\$mqtt_port,\\\"mqtt_user\\\":\\\"\$mqtt_user\\\",\\\"hass_discovery\\\":\$hass_discovery}\"
         else
             echo '{\"error\": \"Settings file not accessible\"}'
         fi
@@ -537,10 +538,18 @@ STATUS_MESSAGE=$(generate_status_message "$RUN_STATUS")
 # -----------------------------------------------------------------------------
 log "autocheck 完成"
 
+# 简化 run 状态显示
+FINAL_RUN_STATUS="$RUN_STATUS"
+case "$RUN_STATUS" in
+    "starting"|"stopping"|"failed")
+        FINAL_RUN_STATUS="stopped"
+        ;;
+esac
+
 # 构建最终状态消息
 FINAL_MESSAGE="{"
 FINAL_MESSAGE="$FINAL_MESSAGE\"status\":\"$RESULT_STATUS\","
-FINAL_MESSAGE="$FINAL_MESSAGE\"run\":\"$RUN_STATUS\","
+FINAL_MESSAGE="$FINAL_MESSAGE\"run\":\"$FINAL_RUN_STATUS\","
 FINAL_MESSAGE="$FINAL_MESSAGE\"config\":$CONFIG_INFO,"
 FINAL_MESSAGE="$FINAL_MESSAGE\"install\":\"$INSTALL_STATUS\","
 FINAL_MESSAGE="$FINAL_MESSAGE\"backup\":\"$BACKUP_STATUS\","
@@ -552,7 +561,7 @@ FINAL_MESSAGE="$FINAL_MESSAGE\"update_info\":\"$UPDATE_INFO\","
 FINAL_MESSAGE="$FINAL_MESSAGE\"message\":\"$STATUS_MESSAGE\","
 FINAL_MESSAGE="$FINAL_MESSAGE\"http_status\":\"$HTTP_STATUS\","
 FINAL_MESSAGE="$FINAL_MESSAGE\"zwave_status\":\"$ZWAVE_STATUS\","
-FINAL_MESSAGE="$FINAL_MESSAGE\"port\":\"$ZUI_PORT\","
+FINAL_MESSAGE="$FINAL_MESSAGE\"zui_port\":\"$ZUI_PORT\","
 FINAL_MESSAGE="$FINAL_MESSAGE\"restart_detected\":$RESTART_DETECTED,"
 FINAL_MESSAGE="$FINAL_MESSAGE\"timestamp\":$NOW"
 FINAL_MESSAGE="$FINAL_MESSAGE}"
