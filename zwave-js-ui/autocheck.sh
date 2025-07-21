@@ -298,7 +298,7 @@ get_config_info() {
     " 2>/dev/null || echo '{"error": "Config not accessible"}')
     
     echo "$config_json"
-}^\"]*)\".*/\1/' || echo 'unknown')
+}
             mqtt_host=\$(grep 'mqtt.*host' '$ZUI_CONFIG_FILE' | sed -E 's/.*\"host\": *\"([^\"]*)\".*/\1/' || echo 'localhost')
             mqtt_user=\$(grep 'mqtt.*username' '$ZUI_CONFIG_FILE' | sed -E 's/.*\"username\": *\"([^\"]*)\".*/\1/' || echo '')
             
