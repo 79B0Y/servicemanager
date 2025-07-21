@@ -251,6 +251,9 @@ START_TIME=$(date +%s)
 load_mqtt_conf
 mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"started\",\"message\":\"restore process initiated\",\"timestamp\":$START_TIME}"
 
+# 检查备份文件
+LATEST_BACKUP=$(ls -1t "$BACKUP_DIR"/*.{tar.gz,zip} 2>/dev/null | head -n1)
+
 if [ -n "$CUSTOM_BACKUP_FILE" ] && [ -f "$CUSTOM_BACKUP_FILE" ]; then
     log "📦 还原自用户指定文件: $CUSTOM_BACKUP_FILE"
     mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"user_backup\",\"message\":\"restoring from user specified file\",\"file\":\"$(basename "$CUSTOM_BACKUP_FILE")\",\"timestamp\":$(date +%s)}"
@@ -263,7 +266,7 @@ if [ -n "$CUSTOM_BACKUP_FILE" ] && [ -f "$CUSTOM_BACKUP_FILE" ]; then
     mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"restoring_data\",\"message\":\"copying backup data to target directory\",\"timestamp\":$(date +%s)}"
     proot-distro login "$PROOT_DISTRO" -- bash -c "rm -rf '$ZUI_DATA_DIR' && mkdir -p '$(dirname $ZUI_DATA_DIR)' && cp -r '$TERMUX_TMP_DIR/store' '$ZUI_DATA_DIR'"
     RESTORE_METHOD="user_backup"
-elif LATEST_BACKUP=$(ls -1t "$BACKUP_DIR"/*.{tar.gz,zip} 2>/dev/null | head -n1); then
+elif [ -n "$LATEST_BACKUP" ] && [ -f "$LATEST_BACKUP" ]; then
     log "📦 还原自最新备份: $LATEST_BACKUP"
     mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"latest_backup\",\"message\":\"restoring from latest backup\",\"file\":\"$(basename "$LATEST_BACKUP")\",\"timestamp\":$(date +%s)}"
     extract_backup "$LATEST_BACKUP"
@@ -276,8 +279,8 @@ elif LATEST_BACKUP=$(ls -1t "$BACKUP_DIR"/*.{tar.gz,zip} 2>/dev/null | head -n1)
     proot-distro login "$PROOT_DISTRO" -- bash -c "rm -rf '$ZUI_DATA_DIR' && mkdir -p '$(dirname $ZUI_DATA_DIR)' && cp -r '$TERMUX_TMP_DIR/store' '$ZUI_DATA_DIR'"
     RESTORE_METHOD="latest_backup"
 elif is_service_running; then
-    log "✅ zwave-js-ui 已在运行，跳过配置生成"
-    mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"skipped\",\"message\":\"service already running, no backup files found, skipping restore\",\"timestamp\":$(date +%s)}"
+    log "✅ zwave-js-ui 已在运行且无备份文件，跳过还原"
+    mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"skipped\",\"message\":\"service already running and no backup files to restore\",\"timestamp\":$(date +%s)}"
     exit 0
 else
     log "⚠️ 无备份，执行配置生成"
