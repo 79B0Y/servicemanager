@@ -221,7 +221,7 @@ fi
 
 log "🔄 重启服务"
 bash "$SERVICE_DIR/stop.sh" || true
-sleep 2
+sleep 10
 bash "$SERVICE_DIR/start.sh"
 
 if is_service_running; then
