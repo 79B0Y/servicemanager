@@ -38,7 +38,7 @@ get_service_pid() {
 
 check_http_status() {
     if command -v nc >/dev/null 2>&1; then
-        nc -z 127.0.0.1 "$SERVICE_PORT" && echo "online" && return
+        nc -z 127.0.0.1 "$SERVICE_PORT" >/dev/null 2>&1 && echo "online" || echo "offline"
     elif command -v curl >/dev/null 2>&1; then
         curl -fs --max-time 3 "http://127.0.0.1:$SERVICE_PORT$HTTP_CHECK_PATH" >/dev/null && echo "online" && return
     fi
