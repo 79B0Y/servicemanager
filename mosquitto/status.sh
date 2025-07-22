@@ -64,8 +64,8 @@ get_service_pid() {
 }
 
 check_http_status() {
-    if nc -z 127.0.0.1 "$SERVICE_PORT"; then
-        echo "online"
+    if command -v nc >/dev/null 2>&1; then
+        nc -z 127.0.0.1 "$SERVICE_PORT" >/dev/null 2>&1 && echo "online" || echo "offline"
     else
         echo "offline"
     fi
