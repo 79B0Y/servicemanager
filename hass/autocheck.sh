@@ -35,6 +35,7 @@ INSTALL_HISTORY_FILE="$BACKUP_DIR/.install_history"
 UPDATE_HISTORY_FILE="$BACKUP_DIR/.update_history"
 
 # 状态文件
+VERSION_CACHE_FILE="$SERVICE_DIR/VERSION"
 LOCK_FILE_AUTOCHECK="$SERVICE_DIR/.lock_autocheck"
 LAST_CHECK_FILE="$SERVICE_DIR/.lastcheck"
 DISABLED_FLAG="$SERVICE_DIR/.disabled"
@@ -126,34 +127,45 @@ get_upgrade_dependencies() {
 # 快速获取 HA 版本
 get_ha_version_fast() {
     if [[ -f "$FAST_HA_BINARY" ]]; then
-        # 优先从缓存文件读取
-        if [[ -f "$VERSION_FILE" ]]; then
-            local cached_version=$(grep -Po 'version: \K.*' "$VERSION_FILE" 2>/dev/null | head -n1)
+        # 方法1: 优先从缓存的 VERSION 文件读取
+        if [[ -f "$VERSION_CACHE_FILE" ]]; then
+            local cached_version=$(cat "$VERSION_CACHE_FILE" 2>/dev/null | head -n1 | tr -d '\n\r\t ')
             if [[ -n "$cached_version" && "$cached_version" != "unknown" ]]; then
                 echo "$cached_version"
                 return
             fi
         fi
         
-        # 尝试快速解析 Python 包版本
-        if command -v python3 >/dev/null 2>&1; then
-            local version_output=$(python3 -c "
-import sys, os
-sys.path.insert(0, '$PROOT_ROOTFS/root/homeassistant/lib/python3.11/site-packages')
-try:
-    import homeassistant
-    print(homeassistant.__version__)
-except:
-    print('unknown')
-" 2>/dev/null || echo "unknown")
-            if [[ "$version_output" != "unknown" ]]; then
+        # 方法2: 尝试从 Home Assistant 的内部版本文件读取
+        local ha_const_file="$PROOT_ROOTFS/root/homeassistant/lib/python3.11/site-packages/homeassistant/const.py"
+        if [[ -f "$ha_const_file" ]]; then
+            local version_output=$(grep "^__version__" "$ha_const_file" 2>/dev/null | sed 's/__version__[[:space:]]*=[[:space:]]*["\x27]\([^"\x27]*\)["\x27].*/\1/')
+            if [[ -n "$version_output" && "$version_output" != "__version__" ]]; then
                 echo "$version_output"
                 return
             fi
         fi
         
-        # 备用：通过 proot 调用（较慢）
-        proot-distro login "$PROOT_DISTRO" -- bash -c "source $HA_VENV_DIR/bin/activate && hass --version" 2>/dev/null | head -n1 || echo "unknown"
+        # 方法3: 尝试从 manifest.json 读取（如果存在）
+        local manifest_file="$PROOT_ROOTFS/root/homeassistant/lib/python3.11/site-packages/homeassistant/components/homeassistant/manifest.json"
+        if [[ -f "$manifest_file" ]]; then
+            local version_output=$(grep '"version"' "$manifest_file" 2>/dev/null | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+            if [[ -n "$version_output" && "$version_output" != '"version"' ]]; then
+                echo "$version_output"
+                return
+            fi
+        fi
+        
+        # 方法4: 备用 - 通过 proot 调用（较慢但准确）
+        local proot_version=$(proot-distro login "$PROOT_DISTRO" -- bash -c "source $HA_VENV_DIR/bin/activate && hass --version 2>/dev/null" | head -n1 2>/dev/null || echo "")
+        if [[ -n "$proot_version" && "$proot_version" != "unknown" ]]; then
+            # 缓存版本到文件，下次可以快速读取
+            echo "$proot_version" > "$VERSION_CACHE_FILE" 2>/dev/null || true
+            echo "$proot_version"
+            return
+        fi
+        
+        echo "unknown"
     else
         echo "unknown"
     fi
