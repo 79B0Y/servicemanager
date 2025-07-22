@@ -115,9 +115,67 @@ check_install_status() {
 }
 
 get_nodered_version() {
+    # 方法1: 尝试从运行中的进程获取版本
+    if [[ -n "$(get_service_pid 2>/dev/null)" ]]; then
+        local runtime_version=$(proot-distro login "$PROOT_DISTRO" -- node-red --version 2>/dev/null | head -n1)
+        if [[ -n "$runtime_version" && "$runtime_version" != "unknown" ]]; then
+            echo "$runtime_version"
+            return
+        fi
+    fi
+    
+    # 方法2: 尝试从 Node-RED 核心模块读取版本
+    local nr_core_package="$PROOT_ROOTFS/opt/node-red/node_modules/node-red/package.json"
+    if [[ -f "$nr_core_package" ]]; then
+        local core_version=$(grep '"version"' "$nr_core_package" 2>/dev/null | head -n1 | sed -E 's/.*"version": *"([^"]+)".*/\1/' || echo "")
+        if [[ -n "$core_version" && "$core_version" != "unknown" ]]; then
+            echo "$core_version"
+            return
+        fi
+    fi
+    
+    # 方法3: 尝试从全局安装路径
+    local global_nr_package="$PROOT_ROOTFS/usr/lib/node_modules/node-red/package.json"
+    if [[ -f "$global_nr_package" ]]; then
+        local global_version=$(grep '"version"' "$global_nr_package" 2>/dev/null | head -n1 | sed -E 's/.*"version": *"([^"]+)".*/\1/' || echo "")
+        if [[ -n "$global_version" && "$global_version" != "unknown" ]]; then
+            echo "$global_version"
+            return
+        fi
+    fi
+    
+    # 方法4: 尝试从项目根目录的 package.json 读取 node-red 依赖版本
     if [[ -f "$NODERED_PACKAGE_FILE" ]]; then
-        # 直接从文件系统读取版本信息，避免 proot 调用
-        grep '"version"' "$NODERED_PACKAGE_FILE" 2>/dev/null | head -n1 | sed -E 's/.*"version": *"([^"]+)".*/\1/' || echo "unknown"
+        local nr_version=$(grep '"node-red"' "$NODERED_PACKAGE_FILE" 2>/dev/null | grep -v '"start"' | head -n1 | sed -E 's/.*"node-red": *"[^0-9]*([0-9]+\.[0-9]+\.[0-9]+).*".*/\1/' || echo "")
+        if [[ -n "$nr_version" && "$nr_version" != "$NODERED_PACKAGE_FILE" ]]; then
+            echo "$nr_version"
+            return
+        fi
+        
+        # 备选：查找项目版本
+        local project_version=$(grep '"version"' "$NODERED_PACKAGE_FILE" 2>/dev/null | head -n1 | sed -E 's/.*"version": *"([^"]+)".*/\1/' || echo "")
+        if [[ -n "$project_version" && "$project_version" != "unknown" ]]; then
+            echo "$project_version"
+            return
+        fi
+    fi
+    
+    # 方法5: 通过 proot 环境动态搜索
+    local found_version=$(proot-distro login "$PROOT_DISTRO" -- bash -c "
+        # 搜索所有可能的 node-red package.json
+        for path in \$(find /opt /usr/lib/node_modules /usr/local/lib/node_modules -name 'package.json' -path '*node-red*' 2>/dev/null | head -5); do
+            if [ -f \"\$path\" ]; then
+                name=\$(grep '\"name\"' \"\$path\" | grep 'node-red' 2>/dev/null)
+                if [ -n \"\$name\" ]; then
+                    grep '\"version\"' \"\$path\" | head -n1 | sed -E 's/.*\"version\": *\"([^\"]+)\".*/\1/' 2>/dev/null
+                    break
+                fi
+            fi
+        done
+    " 2>/dev/null)
+    
+    if [[ -n "$found_version" && "$found_version" != "unknown" ]]; then
+        echo "$found_version"
     else
         echo "unknown"
     fi
