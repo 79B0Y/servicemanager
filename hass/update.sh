@@ -1,27 +1,131 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
-# Home Assistant 更新脚本
-# 版本: v1.4.1
+# Home Assistant 更新脚本 - 独立版本
+# 版本: v1.5.0
 # 功能: 升级 Home Assistant 到指定版本
-# 优化: 使用 heredoc 减少 proot 调用次数
+# 特点: 完全独立，不依赖 common_paths.sh
 # =============================================================================
 
 set -euo pipefail
 
-# 加载统一路径定义
+# =============================================================================
+# 独立的路径和配置定义
+# =============================================================================
+SERVICE_ID="hass"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/common_paths.sh" || {
-    echo "Error: Cannot load common paths"
-    exit 1
+BASE_DIR="/data/data/com.termux/files/home/servicemanager"
+SERVICE_DIR="$BASE_DIR/$SERVICE_ID"
+
+# 配置文件路径
+CONFIG_FILE="$BASE_DIR/configuration.yaml"
+SERVICEUPDATE_FILE="$BASE_DIR/serviceupdate.json"
+VERSION_FILE="$SERVICE_DIR/VERSION.yaml"
+
+# 日志和临时文件
+LOG_DIR="$SERVICE_DIR/logs"
+LOG_FILE="$LOG_DIR/update.log"
+TEMP_DIR="/data/data/com.termux/files/usr/tmp"
+HA_VERSION_TEMP="$TEMP_DIR/hass_version.txt"
+
+# 备份相关
+BACKUP_DIR="${BACKUP_DIR:-/sdcard/isgbackup/$SERVICE_ID}"
+UPDATE_HISTORY_FILE="$BACKUP_DIR/.update_history"
+
+# 容器相关
+PROOT_DISTRO="${PROOT_DISTRO:-ubuntu}"
+HA_VENV_DIR="/root/homeassistant"
+
+# 服务默认版本
+DEFAULT_HA_VERSION="${TARGET_VERSION:-2025.5.3}"
+
+# =============================================================================
+# 独立的工具函数
+# =============================================================================
+
+# 确保目录存在
+ensure_directories() {
+    mkdir -p "$LOG_DIR" "$BACKUP_DIR" "$TEMP_DIR" 2>/dev/null || true
 }
 
-# 设置脚本特定的日志文件
-LOG_FILE="$LOG_FILE_UPDATE"
+# 日志记录
+log() {
+    echo "[$(date '+%F %T')] $*" | tee -a "$LOG_FILE"
+}
 
-# 确保必要目录存在
-ensure_directories
+# 加载 MQTT 配置
+load_mqtt_conf() {
+    if [[ -f "$CONFIG_FILE" ]]; then
+        MQTT_HOST=$(grep -Po '^[[:space:]]*host:[[:space:]]*\K.*' "$CONFIG_FILE" 2>/dev/null | head -n1 || echo "127.0.0.1")
+        MQTT_PORT=$(grep -Po '^[[:space:]]*port:[[:space:]]*\K.*' "$CONFIG_FILE" 2>/dev/null | head -n1 || echo "1883")
+        MQTT_USER=$(grep -Po '^[[:space:]]*username:[[:space:]]*\K.*' "$CONFIG_FILE" 2>/dev/null | head -n1 || echo "admin")
+        MQTT_PASS=$(grep -Po '^[[:space:]]*password:[[:space:]]*\K.*' "$CONFIG_FILE" 2>/dev/null | head -n1 || echo "admin")
+    else
+        MQTT_HOST="127.0.0.1"
+        MQTT_PORT="1883"
+        MQTT_USER="admin"
+        MQTT_PASS="admin"
+    fi
+}
+
+# MQTT 消息发布
+mqtt_report() {
+    local topic="$1"
+    local payload="$2"
+    
+    load_mqtt_conf
+    mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" -u "$MQTT_USER" -P "$MQTT_PASS" -t "$topic" -m "$payload" 2>/dev/null || true
+    log "[MQTT] $topic -> $payload"
+}
+
+# 获取当前 HA 版本
+get_current_ha_version() {
+    if proot-distro login "$PROOT_DISTRO" -- bash -c "source $HA_VENV_DIR/bin/activate && hass --version" 2>/dev/null | head -n1; then
+        return
+    else
+        echo "unknown"
+    fi
+}
+
+# 获取最新 HA 版本
+get_latest_ha_version() {
+    if [[ -f "$SERVICEUPDATE_FILE" ]]; then
+        jq -r ".services[] | select(.id==\"$SERVICE_ID\") | .latest_ha_version" "$SERVICEUPDATE_FILE" 2>/dev/null || echo "unknown"
+    else
+        echo "unknown"
+    fi
+}
+
+# 获取升级依赖
+get_upgrade_dependencies() {
+    if [[ -f "$SERVICEUPDATE_FILE" ]]; then
+        jq -c ".services[] | select(.id==\"$SERVICE_ID\") | .upgrade_dependencies // []" "$SERVICEUPDATE_FILE" 2>/dev/null || echo "[]"
+    else
+        echo "[]"
+    fi
+}
+
+# 记录更新历史
+record_update_history() {
+    local status="$1"
+    local old_version="$2"
+    local new_version="$3"
+    local reason="$4"
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    
+    ensure_directories
+    if [ "$status" = "SUCCESS" ]; then
+        echo "$timestamp SUCCESS $old_version -> $new_version" >> "$UPDATE_HISTORY_FILE"
+    else
+        echo "$timestamp FAILED $old_version -> $new_version ($reason)" >> "$UPDATE_HISTORY_FILE"
+    fi
+}
+
+# =============================================================================
+# 主程序开始
+# =============================================================================
 
 START_TIME=$(date +%s)
+ensure_directories
 
 # -----------------------------------------------------------------------------
 # 获取当前版本
@@ -47,12 +151,7 @@ mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"updating\",\"current_
 log "reading upgrade dependencies from serviceupdate.json"
 mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"updating\",\"current_version\":\"$CURRENT_VERSION\",\"message\":\"reading upgrade dependencies from serviceupdate.json\",\"timestamp\":$(date +%s)}"
 
-if [ ! -f "$SERVICEUPDATE_FILE" ]; then
-    log "serviceupdate.json not found, using default upgrade dependencies"
-    UPGRADE_DEPS='[]'
-else
-    UPGRADE_DEPS=$(get_upgrade_dependencies)
-fi
+UPGRADE_DEPS=$(get_upgrade_dependencies)
 
 # 针对特定版本定义额外依赖
 EXTRA_PIP_PKGS=""
@@ -90,7 +189,7 @@ bash "$SERVICE_DIR/stop.sh"
 sleep 5
 
 # -----------------------------------------------------------------------------
-# 执行升级（使用 heredoc 优化）
+# 执行升级
 # -----------------------------------------------------------------------------
 log "performing Home Assistant upgrade in proot container"
 mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"updating\",\"current_version\":\"$CURRENT_VERSION\",\"message\":\"installing new version\",\"target_version\":\"$TARGET_VERSION\",\"timestamp\":$(date +%s)}"
@@ -200,7 +299,14 @@ while [ "$WAITED" -lt "$MAX_WAIT" ]; do
         mqtt_report "isg/update/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"success\",\"old_version\":\"$CURRENT_VERSION\",\"new_version\":\"$UPDATED_VERSION\",\"duration\":$DURATION,\"timestamp\":$(date +%s)}"
         
         # 更新版本文件
-        echo "$UPDATED_VERSION" > "$VERSION_FILE"
+        if [[ -f "$VERSION_FILE" ]]; then
+            # 更新现有版本文件中的版本号，保持其他内容不变
+            sed -i "s/version: .*/version: $UPDATED_VERSION/" "$VERSION_FILE"
+        else
+            # 创建简单的版本文件
+            echo "version: $UPDATED_VERSION" > "$VERSION_FILE"
+        fi
+        
         log "update completed successfully: $CURRENT_VERSION → $UPDATED_VERSION (${DURATION}s)"
         exit 0
     fi
