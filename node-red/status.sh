@@ -1,7 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
-# Node-RED 状态查询脚本 (Termux 优化版 + MQTT 上报 + 模式控制)
-# 版本: v2.1.1
+# Node-RED 状态查询脚本 (Termux 优化版 + MQTT 上报 + 模式控制 + JSON模式)
+# 版本: v2.2.0
 # =============================================================================
 
 set -euo pipefail
@@ -18,15 +18,21 @@ NODERED_INSTALL_PATH="/opt/node-red/node_modules/node-red"
 NODERED_PORT=1880
 HTTP_TIMEOUT=5
 
-# 控制模式: 0=全查, 1=只查运行, 2=只查安装
 CHECK_MODE=${STATUS_MODE:-0}
+
+IS_JSON_MODE=0
+if [[ "${1:-}" == "--json" ]]; then
+    IS_JSON_MODE=1
+fi
 
 ensure_directories() {
     mkdir -p "$LOG_DIR"
 }
 
 log() {
-    echo "[$(date '+%F %T')] $*" | tee -a "$LOG_FILE"
+    if [[ "$IS_JSON_MODE" -eq 0 ]]; then
+        echo "[$(date '+%F %T')] $*" | tee -a "$LOG_FILE"
+    fi
 }
 
 load_mqtt_conf() {
@@ -49,7 +55,10 @@ mqtt_report() {
 
     load_mqtt_conf
     mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" -u "$MQTT_USER" -P "$MQTT_PASS" -t "$topic" -m "$payload" 2>/dev/null || true
-    echo "[$(date '+%F %T')] [MQTT] $topic -> $payload" >> "$LOG_FILE"
+
+    if [[ "$IS_JSON_MODE" -eq 0 ]]; then
+        log "[MQTT] $topic -> $payload"
+    fi
 }
 
 check_installation_proot() {
@@ -59,7 +68,7 @@ check_installation_proot() {
 get_version_proot() {
     proot-distro login "$PROOT_DISTRO" -- bash -c "
         if [ -f '$NODERED_INSTALL_PATH/package.json' ]; then
-            grep '"version"' '$NODERED_INSTALL_PATH/package.json' | head -n1 | sed -E 's/.*\"version\": *\"([^\"]+)\".*/\1/'
+            grep '\"version\"' '$NODERED_INSTALL_PATH/package.json' | head -n1 | sed -E 's/.*\"version\": *\"([^\"]+)\".*/\1/'
         else
             echo 'unknown'
         fi
@@ -125,8 +134,8 @@ if [ "$CHECK_MODE" = "1" ] && [ "$STATUS" = "stopped" ]; then
 fi
 
 STATUS_JSON="{\"service\":\"$SERVICE_ID\",\"status\":\"$STATUS\",\"pid\":\"$PID\",\"runtime\":\"$RUNTIME\",\"http_status\":\"$HTTP_STATUS\",\"port\":\"$NODERED_PORT\",\"install\":$INSTALL_STATUS,\"version\":\"$NODERED_VERSION\",\"timestamp\":$(date +%s)}"
+
 mqtt_report "isg/status/$SERVICE_ID/status" "$STATUS_JSON"
 
 echo "$STATUS_JSON"
-
 exit $EXIT
