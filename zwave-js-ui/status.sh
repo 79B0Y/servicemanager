@@ -1,7 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
-# Z-Wave JS UI 通用状态查询脚本（修正版）
-# 版本: v1.1.0
+# Z-Wave JS UI 通用状态查询脚本（增强版 支持 --json）
+# 版本: v1.2.0
 # =============================================================================
 
 set -euo pipefail
@@ -18,10 +18,17 @@ CONFIG_FILE="/data/data/com.termux/files/home/servicemanager/configuration.yaml"
 LOG_FILE="/data/data/com.termux/files/home/servicemanager/$SERVICE_ID/logs/status.log"
 STATUS_MODE="${STATUS_MODE:-0}"  # 默认模式0
 
+IS_JSON_MODE=0
+if [[ "${1:-}" == "--json" ]]; then
+    IS_JSON_MODE=1
+fi
+
 mkdir -p "$(dirname "$LOG_FILE")"
 
 log() {
-    echo "[$(date '+%F %T')] $*" | tee -a "$LOG_FILE"
+    if [[ "$IS_JSON_MODE" -eq 0 ]]; then
+        echo "[$(date '+%F %T')] $*" | tee -a "$LOG_FILE"
+    fi
 }
 
 load_mqtt_conf() {
@@ -43,7 +50,10 @@ mqtt_report() {
     local payload="$2"
     load_mqtt_conf
     mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT_CONFIG" -u "$MQTT_USER" -P "$MQTT_PASS" -t "$topic" -m "$payload" 2>/dev/null || true
-    echo "[$(date '+%F %T')] [MQTT] $topic -> $payload" >> "$LOG_FILE"
+
+    if [[ "$IS_JSON_MODE" -eq 0 ]]; then
+        log "[MQTT] $topic -> $payload"
+    fi
 }
 
 get_service_pid() {
@@ -75,11 +85,13 @@ STATUS="stopped"
 INSTALL_STATUS="false"
 VERSION="unknown"
 HTTP_STATUS="offline"
+EXIT=1
 
 if [ "$STATUS_MODE" -eq 2 ]; then
     INSTALL_STATUS=$(check_install)
     VERSION=$(get_version)
     STATUS="stopped"
+    EXIT=1
 elif [ "$STATUS_MODE" -eq 1 ]; then
     PID=$(get_service_pid || echo "")
     if [ -n "$PID" ]; then
@@ -88,16 +100,17 @@ elif [ "$STATUS_MODE" -eq 1 ]; then
         VERSION="running"
         HTTP_STATUS=$(check_http_status)
         RUNTIME=$(ps -o etime= -p "$PID" 2>/dev/null | xargs || echo "")
+        EXIT=0
     fi
 else
     INSTALL_STATUS=$(check_install)
     VERSION=$(get_version)
-
     PID=$(get_service_pid || echo "")
     if [ -n "$PID" ]; then
         STATUS="running"
         HTTP_STATUS=$(check_http_status)
         RUNTIME=$(ps -o etime= -p "$PID" 2>/dev/null | xargs || echo "")
+        EXIT=0
     fi
 fi
 
@@ -116,5 +129,13 @@ RESULT_JSON=$(cat <<EOF
 EOF
 )
 
-echo "$RESULT_JSON"
 mqtt_report "isg/status/$SERVICE_ID/status" "$RESULT_JSON"
+
+if [[ "$IS_JSON_MODE" -eq 1 ]]; then
+    echo "$RESULT_JSON"
+else
+    log "状态检查完成"
+    echo "$RESULT_JSON"
+fi
+
+exit $EXIT
