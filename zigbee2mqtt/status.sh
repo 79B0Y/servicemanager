@@ -1,12 +1,11 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
-# 通用服务状态查询脚本 - 修正版
-# 版本: v2.1.0
+# 通用服务状态查询脚本 - JSON模式增强版
+# 版本: v2.2.0
 # =============================================================================
 
 set -euo pipefail
 
-# 1️⃣ 加载配置与路径
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common_paths.sh" || {
     echo "❌ Error: Cannot load common paths"
@@ -21,6 +20,11 @@ SERVICE_INSTALL_PATH="${Z2M_INSTALL_DIR:-/opt/zigbee2mqtt}"
 HTTP_CHECK_PATH="${HTTP_CHECK_PATH:-/}"
 STATUS_MODE="${STATUS_MODE:-0}"
 
+IS_JSON_MODE=0
+if [[ "${1:-}" == "--json" ]]; then
+    IS_JSON_MODE=1
+fi
+
 TS=$(date +%s)
 PID=""
 RUNTIME=""
@@ -28,12 +32,10 @@ HTTP_STATUS="offline"
 INSTALL_STATUS=false
 VERSION="unknown"
 
-# 2️⃣ 进程检测
 get_service_pid() {
     netstat -tnlp 2>/dev/null | grep ":$SERVICE_PORT " | awk '{print $7}' | cut -d'/' -f1 | head -n1 || true
 }
 
-# 3️⃣ HTTP 健康检查
 check_http_status() {
     if command -v nc >/dev/null 2>&1; then
         nc -z 127.0.0.1 "$SERVICE_PORT" && echo "online" && return
@@ -43,7 +45,6 @@ check_http_status() {
     echo "offline"
 }
 
-# 4️⃣ 安装与版本检查
 check_install_status() {
     if proot-distro login "$PROOT_DISTRO" -- test -d "$SERVICE_INSTALL_PATH"; then
         INSTALL_STATUS=true
@@ -51,7 +52,23 @@ check_install_status() {
     fi
 }
 
-# 5️⃣ 执行模式检测
+log() {
+    if [[ "$IS_JSON_MODE" -eq 0 ]]; then
+        echo "[$(date '+%F %T')] $*" | tee -a "$LOG_FILE"
+    fi
+}
+
+mqtt_report() {
+    local topic="$1"
+    local payload="$2"
+    load_mqtt_conf
+    mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" -u "$MQTT_USER" -P "$MQTT_PASS" -t "$topic" -m "$payload" 2>/dev/null || true
+
+    if [[ "$IS_JSON_MODE" -eq 0 ]]; then
+        log "[MQTT] $topic -> $payload"
+    fi
+}
+
 PID=$(get_service_pid)
 [ -n "$PID" ] && RUNTIME=$(ps -o etime= -p "$PID" | xargs)
 
@@ -72,7 +89,6 @@ case "$STATUS_MODE" in
         ;;
 esac
 
-# 6️⃣ 最终状态判定
 if [ -n "$PID" ]; then
     if [ "$HTTP_STATUS" = "offline" ]; then
         STATUS="starting"
@@ -86,7 +102,6 @@ else
     EXIT=1
 fi
 
-# 7️⃣ JSON 输出 & MQTT 上报
 RESULT_JSON=$(jq -n \
     --arg service "$SERVICE_ID" \
     --arg status "$STATUS" \
@@ -101,18 +116,12 @@ RESULT_JSON=$(jq -n \
 )
 
 mqtt_report "isg/status/$SERVICE_ID/status" "$RESULT_JSON"
-log "$RESULT_JSON"
 
-# 8️⃣ 输出控制
-case "${1:-}" in
-    --json)
-        echo "$RESULT_JSON"
-        ;;
-    --quiet)
-        ;;
-    *)
-        echo "$RESULT_JSON"
-        ;;
-esac
+if [[ "$IS_JSON_MODE" -eq 1 ]]; then
+    echo "$RESULT_JSON"
+else
+    log "状态查询完成"
+    echo "$RESULT_JSON"
+fi
 
 exit $EXIT
