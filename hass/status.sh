@@ -1,7 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
 # Home Assistant 状态查询脚本（通用服务状态模式）
-# 版本: v2.0.1
+# 版本: v2.0.2
 # =============================================================================
 set -euo pipefail
 
@@ -21,6 +21,11 @@ LOG_FILE="$LOG_DIR/status.log"
 
 STATUS_MODE="${STATUS_MODE:-0}"  # 0=全检，1=仅运行，2=仅安装
 HTTP_TIMEOUT=5
+
+IS_JSON_MODE=0
+if [[ "${1:-}" == "--json" ]]; then
+    IS_JSON_MODE=1
+fi
 
 # =============================================================================
 # 工具函数
@@ -42,7 +47,10 @@ mqtt_report() {
     local topic="$1" payload="$2"
     load_mqtt_conf
     mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" -u "$MQTT_USER" -P "$MQTT_PASS" -t "$topic" -m "$payload" || true
-    log "[MQTT] $topic -> $payload"
+
+    if [[ "$IS_JSON_MODE" -eq 0 ]]; then
+        log "[MQTT] $topic -> $payload"
+    fi
 }
 
 get_service_pid() {
@@ -91,7 +99,6 @@ if [[ "$STATUS_MODE" != "1" ]]; then
     fi
 fi
 
-# 运行中但未检测到安装，强制标记 install=true
 if [[ "$STATUS" == "running" && "$INSTALL_STATUS" != "true" ]]; then
     INSTALL_STATUS="true"
 fi
@@ -111,7 +118,7 @@ RESULT_JSON=$(jq -n \
 
 mqtt_report "isg/status/$SERVICE_ID/status" "$RESULT_JSON"
 
-if [[ "${1:-}" == "--json" ]]; then
+if [[ "$IS_JSON_MODE" -eq 1 ]]; then
     echo "$RESULT_JSON"
     exit $EXIT_CODE
 fi
