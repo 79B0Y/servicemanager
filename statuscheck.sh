@@ -1,81 +1,97 @@
 #!/data/data/com.termux/files/usr/bin/bash
-# statuscheck.sh: 快速检查所有服务的状态与安装状态，并上报 MQTT
-
+# statuscheck.sh: 检查所有服务状态（支持 STATUS_MODE），双 MQTT 上报
 set -euo pipefail
 
 SERVICEMANAGER_DIR="/data/data/com.termux/files/home/servicemanager"
 SERVICEUPDATE_FILE="$SERVICEMANAGER_DIR/serviceupdate.json"
 CONFIG_FILE="$SERVICEMANAGER_DIR/configuration.yaml"
 
-log() {
-    echo "[$(date +'%F %T')] $*"
-}
+STATUS_MODE="${STATUS_MODE:-0}"  # 0=全查，1=只查运行，2=只查安装
+
+log() { echo "[$(date +'%F %T')] $*"; }
 
 load_mqtt_config() {
-    log "🔧 加载 MQTT 配置..."
     MQTT_HOST=$(yq eval '.mqtt.host' "$CONFIG_FILE" 2>/dev/null || echo "127.0.0.1")
     MQTT_PORT=$(yq eval '.mqtt.port' "$CONFIG_FILE" 2>/dev/null || echo "1883")
     MQTT_USER=$(yq eval '.mqtt.username' "$CONFIG_FILE" 2>/dev/null || echo "admin")
     MQTT_PASS=$(yq eval '.mqtt.password' "$CONFIG_FILE" 2>/dev/null || echo "admin")
-    log "✅ MQTT配置: host=$MQTT_HOST, port=$MQTT_PORT, user=$MQTT_USER"
 }
 
 mqtt_report() {
-    local topic="$1"
-    local payload="$2"
-    log "📡 MQTT 上报: topic=$topic payload=$payload"
-    mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" -u "$MQTT_USER" -P "$MQTT_PASS" -t "$topic" -m "$payload" 2>/dev/null || log "⚠️ MQTT 上报失败"
+    local topic="$1" payload="$2"
+    mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" -u "$MQTT_USER" -P "$MQTT_PASS" -t "$topic" -m "$payload" 2>/dev/null || log "⚠️ MQTT 上报失败: $topic"
 }
 
-check_services_status() {
-    log "🔍 开始检查所有服务状态..."
-    local services=$(jq -r '.services[].id' "$SERVICEUPDATE_FILE")
-    local report="{"
+check_service_status() {
+    local service_id="$1"
+    local service_path="$SERVICEMANAGER_DIR/$service_id"
+    local status="unknown"
+    local install="false"
+    local version="unknown"
 
-    for service_id in $services; do
-        local service_path="$SERVICEMANAGER_DIR/$service_id"
-        local status="unknown"
-        local install="false"
+    if [ ! -f "$service_path/status.sh" ]; then
+        log "⚠️  $service_id 缺少 status.sh"
+        echo "$status,$install,$version"
+        return
+    fi
 
-        log "➡️ 检查服务: $service_id"
-        if [ -f "$service_path/status.sh" ]; then
-            chmod +x "$service_path/status.sh" 2>/dev/null || true
+    chmod +x "$service_path/status.sh" 2>/dev/null || true
+    case "$STATUS_MODE" in
+        0|1)
             output=$(bash "$service_path/status.sh" --json 2>/dev/null || echo '{}')
-            log "🗒️  $service_id status.sh 输出: $output"
-
-            # 只保留 output 中的 JSON 部分（去除多余的日志行）
             json_output=$(echo "$output" | grep -o '{.*}' | tail -n1)
-
             if [ -n "$json_output" ]; then
                 status=$(echo "$json_output" | jq -r '.status // "unknown"')
                 install=$(echo "$json_output" | jq -r '.install // false')
-                log "🔎 JSON解析: status=$status, install=$install"
+                version=$(echo "$json_output" | jq -r '.version // "unknown"')
 
-                # 如果系统正在运行且 install 为 false，强制设为 true
-                if [[ "$status" == "running" && "$install" != "true" ]]; then
-                    log "🔄  $service_id 运行中，但 install=false，修正为 true"
-                    install="true"
+                # STATUS_MODE=1 只看运行，running就标true+version=running
+                if [[ "$STATUS_MODE" == "1" && "$status" == "running" ]]; then
+                    install=true
+                    version="running"
                 fi
-            else
-                log "⚠️  $service_id 返回的 JSON 无法解析，status/install 不可用"
             fi
-        else
-            log "⚠️  $service_id 缺少 status.sh 文件"
-            status="not_found"
-        fi
+            ;;
+        2)
+            install=$(bash "$service_path/status.sh" --check-install 2>/dev/null || echo "false")
+            ;;
+    esac
 
-        log "✅  $service_id 最终状态: status=$status, install=$install"
-        report+="\"$service_id\":{\"status\":\"$status\",\"install\":$install},"
-    done
-
-    report="${report%,}}"
-    mqtt_report "isg/status/all/status" "$report"
-    log "✅ 所有服务状态已上报"
+    echo "$status,$install,$version"
 }
 
-log "🚀 启动 statuscheck.sh"
+log "🚀 启动 statuscheck.sh STATUS_MODE=$STATUS_MODE"
 load_mqtt_config
-check_services_status
-log "🏁 statuscheck.sh 执行完成"
 
+services=$(jq -r '.services[].id' "$SERVICEUPDATE_FILE")
+declare -A status_map
+
+for service_id in $services; do
+    result=$(check_service_status "$service_id")
+    IFS=',' read -r status install version <<< "$result"
+
+    if [[ "$STATUS_MODE" -lt 2 && "$status" == "stopped" ]]; then
+        log "🔄 $service_id 运行状态stopped，补查安装状态..."
+        backup_mode="$STATUS_MODE"
+        STATUS_MODE=2
+        result2=$(check_service_status "$service_id")
+        STATUS_MODE=$backup_mode
+        install=$(echo "$result2" | cut -d',' -f2)
+    fi
+
+    status_map["$service_id"]="{\"status\":\"$status\",\"install\":$install,\"version\":\"$version\"}"
+done
+
+# 拼装JSON
+report="{"
+for sid in "${!status_map[@]}"; do
+    report+="\"$sid\":${status_map[$sid]},"
+done
+report="${report%,}}"
+
+# 双MQTT上报
+mqtt_report "isg/status/all/status" "$report"
+mqtt_report "isg/status/all/status/confirm" "$report"
+
+log "✅ 服务状态已上报：isg/status/all/status + confirm"
 exit 0
