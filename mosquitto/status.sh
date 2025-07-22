@@ -1,8 +1,8 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
 # Mosquitto 状态查询脚本（优化版）
-# 版本: v1.1.0
-# 功能: 检查服务运行状态、端口、HTTP连接性，支持多种模式，MQTT上报
+# 版本: v1.2.0
+# 功能: 检查服务运行状态、端口、HTTP连接性，支持多种模式，MQTT上报，支持 --json 输出
 # =============================================================================
 
 set -euo pipefail
@@ -19,6 +19,11 @@ SERVICE_PORT="1883"
 HTTP_TIMEOUT=5
 
 STATUS_MODE=${STATUS_MODE:-0}  # 默认模式
+
+IS_JSON_MODE=0
+if [[ "${1:-}" == "--json" ]]; then
+    IS_JSON_MODE=1
+fi
 
 # -----------------------------------------------------------------------------
 # 加载 MQTT 配置
@@ -48,7 +53,10 @@ mqtt_report() {
     load_mqtt_conf
     mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" -u "$MQTT_USER" -P "$MQTT_PASS" \
         -t "$topic" -m "$payload" 2>/dev/null || true
-    echo "[$(date '+%F %T')] [MQTT] $topic -> $payload" >> "$LOG_FILE"
+
+    if [[ "$IS_JSON_MODE" -eq 0 ]]; then
+        log "[MQTT] $topic -> $payload"
+    fi
 }
 
 get_service_pid() {
@@ -103,7 +111,6 @@ case "$STATUS_MODE" in
     *)
         STATUS="unknown"
         ;;
-
 esac
 
 STATUS_JSON=$(jq -n \
@@ -121,6 +128,10 @@ STATUS_JSON=$(jq -n \
 
 mqtt_report "isg/status/$SERVICE_ID/status" "$STATUS_JSON"
 
-log "状态查询结果"
+if [[ "$IS_JSON_MODE" -eq 1 ]]; then
+    echo "$STATUS_JSON"
+    exit 0
+fi
 
+log "状态查询结果"
 echo "$STATUS_JSON"
