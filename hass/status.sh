@@ -94,7 +94,6 @@ fi
 # 运行中但未检测到安装，强制标记 install=true
 if [[ "$STATUS" == "running" && "$INSTALL_STATUS" != "true" ]]; then
     INSTALL_STATUS="true"
-    log "运行中，强制设定 INSTALL_STATUS=true"
 fi
 
 RESULT_JSON=$(jq -n \
@@ -110,13 +109,13 @@ RESULT_JSON=$(jq -n \
     '{service: $service, status: $status, pid: $pid, runtime: $runtime, http_status: $http_status, port: ($port|tonumber), install: $install, version: $version, timestamp: $timestamp}'
 )
 
+mqtt_report "isg/status/$SERVICE_ID/status" "$RESULT_JSON"
+
 if [[ "${1:-}" == "--json" ]]; then
-    mqtt_report "isg/status/$SERVICE_ID/status" "$RESULT_JSON"
     echo "$RESULT_JSON"
-    exit 0
+    exit $EXIT_CODE
 fi
 
-mqtt_report "isg/status/$SERVICE_ID/status" "$RESULT_JSON"
 log "状态检查完成"
 echo "$RESULT_JSON"
 exit $EXIT_CODE
