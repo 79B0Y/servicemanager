@@ -14,8 +14,10 @@ BASE_DIR="/data/data/com.termux/files/home/servicemanager"
 CONFIG_FILE="$BASE_DIR/configuration.yaml"
 
 SERVICE_PORT="8123"
-SERVICE_INSTALL_PATH="/root/.homeassistant"
-HA_BINARY="/root/homeassistant/bin/hass"
+PROOT_DISTRO="${PROOT_DISTRO:-ubuntu}"
+PROOT_ROOTFS="/data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/$PROOT_DISTRO"
+SERVICE_INSTALL_PATH="$PROOT_ROOTFS/root/.homeassistant"
+HA_BINARY="$PROOT_ROOTFS/root/homeassistant/bin/hass"
 
 LOG_DIR="$BASE_DIR/$SERVICE_ID/logs"
 LOG_FILE="$LOG_DIR/status.log"
@@ -93,11 +95,35 @@ check_http_status() {
 }
 
 check_install_status() {
-    proot-distro login ubuntu -- bash -c "test -f '$HA_BINARY'" 2>/dev/null && echo "true" || echo "false"
+    test -f "$HA_BINARY" && echo "true" || echo "false"
+}
+
+get_ha_version() {
+    if [[ -f "$HA_BINARY" ]]; then
+        # 直接读取文件获取版本，避免执行proot命令
+        local version_output
+        if command -v python3 >/dev/null 2>&1; then
+            # 尝试直接解析Python文件获取版本（更快）
+            version_output=$(python3 -c "
+import sys
+sys.path.insert(0, '$PROOT_ROOTFS/root/homeassistant/lib/python*/site-packages')
+try:
+    import homeassistant
+    print(homeassistant.__version__)
+except:
+    print('unknown')
+" 2>/dev/null || echo "unknown")
+        else
+            version_output="unknown"
+        fi
+        echo "$version_output"
+    else
+        echo "unknown"
+    fi
 }
 
 # =============================================================================
-# 主流程
+# 主流程 - 优化版本：默认模式只检查运行状态
 # =============================================================================
 ensure_directories
 TS=$(date +%s)
@@ -105,9 +131,9 @@ TS=$(date +%s)
 PID="" RUNTIME="" HTTP_STATUS="offline" INSTALL_STATUS="false" VERSION="unknown"
 STATUS="stopped" EXIT_CODE=1
 
-# 默认模式（不带参数）只检查运行状态，加快速度
+# 默认模式：只检查运行状态，不检查安装和版本（加快速度）
 if [[ "$IS_JSON_MODE" -eq 0 && "$IS_QUIET_MODE" -eq 0 ]]; then
-    # 快速模式：只检查运行状态
+    # 快速模式：只检查进程和HTTP状态
     PID=$(get_service_pid 2>/dev/null || true)
     if [ -n "$PID" ]; then
         HTTP_STATUS=$(check_http_status)
@@ -120,7 +146,7 @@ if [[ "$IS_JSON_MODE" -eq 0 && "$IS_QUIET_MODE" -eq 0 ]]; then
         fi
     fi
 else
-    # 完整模式：用于 JSON 输出或其他模式
+    # 完整检查模式（JSON模式或有STATUS_MODE环境变量时）
     if [[ "$STATUS_MODE" != "2" ]]; then
         PID=$(get_service_pid 2>/dev/null || true)
         if [ -n "$PID" ]; then
@@ -139,7 +165,7 @@ else
     if [[ "$STATUS_MODE" != "1" ]]; then
         INSTALL_STATUS=$(check_install_status)
         if [[ "$INSTALL_STATUS" == "true" && "$VERSION" == "unknown" ]]; then
-            VERSION=$(proot-distro login ubuntu -- bash -c "$HA_BINARY --version" 2>/dev/null | head -n1 || echo "unknown")
+            VERSION=$(get_ha_version)
         fi
     fi
 
@@ -148,7 +174,7 @@ else
     fi
 fi
 
-# 只有在需要 JSON 输出时才构建 JSON
+# 构建JSON结果（仅在需要时）
 if [[ "$IS_JSON_MODE" -eq 1 ]]; then
     RESULT_JSON=$(jq -n \
         --arg service "$SERVICE_ID" \
@@ -162,10 +188,8 @@ if [[ "$IS_JSON_MODE" -eq 1 ]]; then
         --argjson timestamp "$TS" \
         '{service: $service, status: $status, pid: $pid, runtime: $runtime, http_status: $http_status, port: ($port|tonumber), install: $install, version: $version, timestamp: $timestamp}' 2>/dev/null
     )
-fi
-
-# MQTT 上报（静默模式下跳过，默认模式下也跳过以加快速度）
-if [[ "$IS_JSON_MODE" -eq 1 ]]; then
+    
+    # MQTT 上报（静默模式下跳过）
     mqtt_report "isg/status/$SERVICE_ID/status" "$RESULT_JSON"
 fi
 
@@ -174,11 +198,11 @@ if [[ "$IS_QUIET_MODE" -eq 1 ]]; then
     # 静默模式：不输出任何内容，只返回退出代码
     exit $EXIT_CODE
 elif [[ "$IS_JSON_MODE" -eq 1 ]]; then
-    # JSON模式：输出完整JSON信息
+    # JSON模式：只输出JSON，不输出其他信息
     echo "$RESULT_JSON"
     exit $EXIT_CODE
 else
-    # 默认模式：只输出简单的运行状态，快速响应
+    # 普通模式：只输出简单的运行状态（快速模式）
     echo "$STATUS"
     exit $EXIT_CODE
 fi
