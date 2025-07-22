@@ -1,9 +1,8 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
 # Z-Wave JS UI 状态查询脚本（通用服务状态模式）
-# 版本: v2.0.0
-# 修复: 优化输出格式，避免在 autocheck 调用时产生多余输出
-# 参照: Home Assistant status.sh 的最佳实践
+# 版本: v2.0.3
+# 默认简化模式：只输出状态词，快速响应
 # =============================================================================
 set -euo pipefail
 
@@ -15,158 +14,145 @@ BASE_DIR="/data/data/com.termux/files/home/servicemanager"
 CONFIG_FILE="$BASE_DIR/configuration.yaml"
 
 SERVICE_PORT="8091"
-PROOT_DISTRO="${PROOT_DISTRO:-ubuntu}"
-PROOT_ROOTFS="/data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/$PROOT_DISTRO"
-SERVICE_INSTALL_PATH="$PROOT_ROOTFS/root/.pnpm-global/global/5/node_modules/zwave-js-ui"
-ZUI_BINARY="$SERVICE_INSTALL_PATH/bin/zwave-js-ui"
+SERVICE_INSTALL_PATH="/root/.pnpm-global/global/5/node_modules/zwave-js-ui"
+ZUI_BINARY="$SERVICE_INSTALL_PATH/dist/app.js"
 
 LOG_DIR="$BASE_DIR/$SERVICE_ID/logs"
 LOG_FILE="$LOG_DIR/status.log"
 
-STATUS_MODE="${STATUS_MODE:-0}"  # 0=全检，1=仅运行，2=仅安装
 HTTP_TIMEOUT=5
 
+# 检查参数和环境变量
 IS_JSON_MODE=0
+if [[ "${1:-}" == "--json" ]]; then
+    IS_JSON_MODE=1
+fi
+
 IS_QUIET_MODE=0
+if [[ "${1:-}" == "--quiet" ]]; then
+    IS_QUIET_MODE=1
+fi
 
-# 解析参数
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --json)
-            IS_JSON_MODE=1
-            shift
-            ;;
-        --quiet)
-            IS_QUIET_MODE=1
-            shift
-            ;;
-        *)
-            shift
-            ;;
-    esac
-done
+# 决定模式：只有明确设置了参数或环境变量才使用完整模式
+SIMPLE_MODE=1
+if [[ -n "${STATUS_MODE:-}" ]] || [[ "$IS_JSON_MODE" -eq 1 ]] || [[ "$IS_QUIET_MODE" -eq 1 ]]; then
+    SIMPLE_MODE=0
+fi
 
 # =============================================================================
+# 简化模式：快速检查，只输出状态词
+# =============================================================================
+if [[ "$SIMPLE_MODE" -eq 1 ]]; then
+    # 快速进程检测
+    PID=$(pgrep -f '[z]wave-js-ui' | head -n1 || true)
+    
+    if [ -n "$PID" ]; then
+        # 检查端口是否在线
+        if nc -z 127.0.0.1 "$SERVICE_PORT" >/dev/null 2>&1; then
+            STATUS="running"
+            EXIT_CODE=0
+        else
+            STATUS="starting"
+            EXIT_CODE=2
+        fi
+    else
+        STATUS="stopped"
+        EXIT_CODE=1
+    fi
+    
+    # 简化的MQTT上报（静默方式，不输出日志）
+    if [ -f "$CONFIG_FILE" ]; then
+        MQTT_HOST=$(grep -Po '^[[:space:]]*host:[[:space:]]*\K.*' "$CONFIG_FILE" 2>/dev/null | head -n1 || echo "127.0.0.1")
+        MQTT_PORT=$(grep -Po '^[[:space:]]*port:[[:space:]]*\K.*' "$CONFIG_FILE" 2>/dev/null | head -n1 || echo "1883")
+        MQTT_USER=$(grep -Po '^[[:space:]]*username:[[:space:]]*\K.*' "$CONFIG_FILE" 2>/dev/null | head -n1 || echo "admin")
+        MQTT_PASS=$(grep -Po '^[[:space:]]*password:[[:space:]]*\K.*' "$CONFIG_FILE" 2>/dev/null | head -n1 || echo "admin")
+        
+        mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" -u "$MQTT_USER" -P "$MQTT_PASS" \
+            -t "isg/status/$SERVICE_ID/status" -m "$STATUS" >/dev/null 2>&1 || true
+    fi
+    
+    # 直接输出状态词
+    echo "$STATUS"
+    exit $EXIT_CODE
+fi
+
+# =============================================================================
+# 完整模式：详细检查（仅在有参数或环境变量时使用）
+# =============================================================================
+
 # 工具函数
-# =============================================================================
-ensure_directories() { 
-    mkdir -p "$LOG_DIR" 2>/dev/null || true
-}
+ensure_directories() { mkdir -p "$LOG_DIR"; }
 
 log() {
-    # 静默模式下不写日志，避免产生输出
-    if [[ "$IS_QUIET_MODE" -eq 0 ]]; then
-        echo "[$(date '+%F %T')] $*" >> "$LOG_FILE" 2>/dev/null || true
+    if [[ "$IS_JSON_MODE" -eq 0 && "$IS_QUIET_MODE" -eq 0 ]]; then
+        echo "[$(date '+%F %T')] $*" | tee -a "$LOG_FILE"
     fi
 }
 
 load_mqtt_conf() {
-    MQTT_HOST=$(grep -Po '^[[:space:]]*host:[[:space:]]*\K.*' "$CONFIG_FILE" 2>/dev/null | head -n1 || echo "127.0.0.1")
-    MQTT_PORT=$(grep -Po '^[[:space:]]*port:[[:space:]]*\K.*' "$CONFIG_FILE" 2>/dev/null | head -n1 || echo "1883")
-    MQTT_USER=$(grep -Po '^[[:space:]]*username:[[:space:]]*\K.*' "$CONFIG_FILE" 2>/dev/null | head -n1 || echo "admin")
-    MQTT_PASS=$(grep -Po '^[[:space:]]*password:[[:space:]]*\K.*' "$CONFIG_FILE" 2>/dev/null | head -n1 || echo "admin")
+    MQTT_HOST=$(grep -Po '^[[:space:]]*host:[[:space:]]*\K.*' "$CONFIG_FILE" | head -n1 || echo "127.0.0.1")
+    MQTT_PORT=$(grep -Po '^[[:space:]]*port:[[:space:]]*\K.*' "$CONFIG_FILE" | head -n1 || echo "1883")
+    MQTT_USER=$(grep -Po '^[[:space:]]*username:[[:space:]]*\K.*' "$CONFIG_FILE" | head -n1 || echo "admin")
+    MQTT_PASS=$(grep -Po '^[[:space:]]*password:[[:space:]]*\K.*' "$CONFIG_FILE" | head -n1 || echo "admin")
 }
 
 mqtt_report() {
     local topic="$1" payload="$2"
-    
-    # 静默模式下不进行 MQTT 上报，避免产生输出
-    if [[ "$IS_QUIET_MODE" -eq 1 ]]; then
-        return 0
-    fi
-    
     load_mqtt_conf
-    mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" -u "$MQTT_USER" -P "$MQTT_PASS" -t "$topic" -m "$payload" >/dev/null 2>&1 || true
+    mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" -u "$MQTT_USER" -P "$MQTT_PASS" -t "$topic" -m "$payload" || true
 
-    # JSON模式下不输出MQTT日志
-    if [[ "$IS_JSON_MODE" -eq 0 ]]; then
+    if [[ "$IS_JSON_MODE" -eq 0 && "$IS_QUIET_MODE" -eq 0 ]]; then
         log "[MQTT] $topic -> $payload"
     fi
 }
 
 get_service_pid() {
-    # 使用更高效的方法：结合 pgrep 和 netstat 检查
-    local pids=$(pgrep -f 'zwave-js-ui\|zwavejs2mqtt' 2>/dev/null)
-    
-    for pid in $pids; do
+    # 方法1: 查找监听指定端口的进程
+    pgrep -f '[z]wave-js-ui' | while read -r pid; do
+        # 验证进程确实在监听指定端口
         if netstat -tnlp 2>/dev/null | grep -q ":$SERVICE_PORT.*$pid/"; then
             echo "$pid"
             return 0
         fi
     done
-    
     return 1
 }
 
 check_http_status() {
-    nc -z 127.0.0.1 "$SERVICE_PORT" >/dev/null 2>&1 && echo "online" || echo "offline"
+    if nc -z 127.0.0.1 "$SERVICE_PORT" >/dev/null 2>&1; then
+        echo "online"
+    else
+        echo "offline"
+    fi
 }
 
 check_install_status() {
-    # 快速检查：直接检查文件存在性
-    if [[ -f "$SERVICE_INSTALL_PATH/package.json" ]]; then
-        echo "true"
-    elif [[ -d "$SERVICE_INSTALL_PATH" ]]; then
-        echo "true"
-    else
-        # 备用检查：使用 pnpm 全局列表
-        local global_check=$(proot-distro login "$PROOT_DISTRO" -- bash -c "
-            export PNPM_HOME=/root/.pnpm-global
-            export PATH=\$PNPM_HOME:\$PATH
-            source ~/.bashrc 2>/dev/null || true
-            
-            if command -v pnpm >/dev/null 2>&1; then
-                pnpm list -g zwave-js-ui 2>/dev/null | grep -q 'zwave-js-ui' && echo 'true' || echo 'false'
-            else
-                echo 'false'
-            fi
-        " 2>/dev/null || echo "false")
-        echo "$global_check"
-    fi
+    proot-distro login ubuntu -- bash -c "test -f '$SERVICE_INSTALL_PATH/package.json'" 2>/dev/null && echo "true" || echo "false"
 }
 
-get_zui_version() {
-    if [[ -f "$SERVICE_INSTALL_PATH/package.json" ]]; then
-        # 直接解析 package.json 文件获取版本（更快）
-        local version_output=$(grep -Po '"version":\s*"\K[^"]+' "$SERVICE_INSTALL_PATH/package.json" 2>/dev/null)
-        if [[ -n "$version_output" ]]; then
-            echo "$version_output"
-            return
-        fi
-    fi
-    
-    # 备用方法：通过 proot 环境获取版本
-    local version_output=$(proot-distro login "$PROOT_DISTRO" -- bash -c "
-        export PNPM_HOME=/root/.pnpm-global
-        export PATH=\$PNPM_HOME:\$PATH
-        source ~/.bashrc 2>/dev/null || true
-        
+get_version() {
+    proot-distro login ubuntu -- bash -c "
         if [ -f '$SERVICE_INSTALL_PATH/package.json' ]; then
-            grep -Po '\"version\":\s*\"\K[^\"]+' '$SERVICE_INSTALL_PATH/package.json'
-        elif command -v pnpm >/dev/null 2>&1; then
-            pnpm list -g zwave-js-ui 2>/dev/null | grep 'zwave-js-ui@' | sed -E 's/.*zwave-js-ui@([0-9.]+).*/\1/' || echo 'unknown'
+            grep -m1 '\"version\"' '$SERVICE_INSTALL_PATH/package.json' | sed -E 's/.*\"version\"[[:space:]]*:[[:space:]]*\"([^\"]+)\".*/\1/'
         else
             echo 'unknown'
         fi
-    " 2>/dev/null || echo "unknown")
-    
-    echo "$version_output"
+    " 2>/dev/null || echo "unknown"
 }
 
-# =============================================================================
-# 主流程 - 优化版本：默认模式只检查运行状态
-# =============================================================================
+# 完整模式主流程
 ensure_directories
 TS=$(date +%s)
 
 PID="" RUNTIME="" HTTP_STATUS="offline" INSTALL_STATUS="false" VERSION="unknown"
 STATUS="stopped" EXIT_CODE=1
 
-# 默认模式：只检查运行状态，不检查安装和版本（加快速度）
-if [[ "$IS_JSON_MODE" -eq 0 && "$IS_QUIET_MODE" -eq 0 ]]; then
-    # 快速模式：只检查进程和HTTP状态
-    PID=$(get_service_pid 2>/dev/null || true)
+# 根据 STATUS_MODE 执行不同的检查逻辑
+if [[ "${STATUS_MODE:-0}" != "2" ]]; then
+    # 检查运行状态
+    PID=$(get_service_pid || true)
     if [ -n "$PID" ]; then
+        RUNTIME=$(ps -o etime= -p "$PID" | xargs || echo "")
         HTTP_STATUS=$(check_http_status)
         if [[ "$HTTP_STATUS" == "online" ]]; then
             STATUS="running"
@@ -176,64 +162,47 @@ if [[ "$IS_JSON_MODE" -eq 0 && "$IS_QUIET_MODE" -eq 0 ]]; then
             EXIT_CODE=2
         fi
     fi
-else
-    # 完整检查模式（JSON模式或有STATUS_MODE环境变量时）
-    if [[ "$STATUS_MODE" != "2" ]]; then
-        PID=$(get_service_pid 2>/dev/null || true)
-        if [ -n "$PID" ]; then
-            RUNTIME=$(ps -o etime= -p "$PID" 2>/dev/null | xargs || echo "")
-            HTTP_STATUS=$(check_http_status)
-            if [[ "$HTTP_STATUS" == "online" ]]; then
-                STATUS="running"
-                EXIT_CODE=0
-            else
-                STATUS="starting"
-                EXIT_CODE=2
-            fi
-        fi
-    fi
+fi
 
-    if [[ "$STATUS_MODE" != "1" ]]; then
-        INSTALL_STATUS=$(check_install_status)
-        if [[ "$INSTALL_STATUS" == "true" && "$VERSION" == "unknown" ]]; then
-            VERSION=$(get_zui_version)
-        fi
-    fi
-
-    if [[ "$STATUS" == "running" && "$INSTALL_STATUS" != "true" ]]; then
-        INSTALL_STATUS="true"
+if [[ "${STATUS_MODE:-0}" != "1" ]]; then
+    # 检查安装状态
+    INSTALL_STATUS=$(check_install_status)
+    if [[ "$INSTALL_STATUS" == "true" && "$VERSION" == "unknown" ]]; then
+        VERSION=$(get_version)
     fi
 fi
 
-# 构建JSON结果（仅在需要时）
+# 如果服务正在运行但检测为未安装，修正安装状态
+if [[ "$STATUS" == "running" && "$INSTALL_STATUS" != "true" ]]; then
+    INSTALL_STATUS="true"
+fi
+
+# 构建结果JSON
+RESULT_JSON=$(jq -n \
+    --arg service "$SERVICE_ID" \
+    --arg status "$STATUS" \
+    --arg pid "$PID" \
+    --arg runtime "$RUNTIME" \
+    --arg http_status "$HTTP_STATUS" \
+    --arg port "$SERVICE_PORT" \
+    --argjson install "$INSTALL_STATUS" \
+    --arg version "$VERSION" \
+    --argjson timestamp "$TS" \
+    '{service: $service, status: $status, pid: $pid, runtime: $runtime, http_status: $http_status, port: ($port|tonumber), install: $install, version: $version, timestamp: $timestamp}'
+)
+
+# 上报到MQTT
+mqtt_report "isg/status/$SERVICE_ID/status" "$RESULT_JSON"
+
+# 输出结果
 if [[ "$IS_JSON_MODE" -eq 1 ]]; then
-    RESULT_JSON=$(jq -n \
-        --arg service "$SERVICE_ID" \
-        --arg status "$STATUS" \
-        --arg pid "$PID" \
-        --arg runtime "$RUNTIME" \
-        --arg http_status "$HTTP_STATUS" \
-        --arg port "$SERVICE_PORT" \
-        --argjson install "$INSTALL_STATUS" \
-        --arg version "$VERSION" \
-        --argjson timestamp "$TS" \
-        '{service: $service, status: $status, pid: $pid, runtime: $runtime, http_status: $http_status, port: ($port|tonumber), install: $install, version: $version, timestamp: $timestamp}' 2>/dev/null
-    )
-    
-    # MQTT 上报（静默模式下跳过）
-    mqtt_report "isg/status/$SERVICE_ID/status" "$RESULT_JSON"
-fi
-
-# 输出控制
-if [[ "$IS_QUIET_MODE" -eq 1 ]]; then
-    # 静默模式：不输出任何内容，只返回退出代码
-    exit $EXIT_CODE
-elif [[ "$IS_JSON_MODE" -eq 1 ]]; then
-    # JSON模式：只输出JSON，不输出其他信息
     echo "$RESULT_JSON"
     exit $EXIT_CODE
-else
-    # 普通模式：只输出简单的运行状态（快速模式）
-    echo "$STATUS"
+elif [[ "$IS_QUIET_MODE" -eq 1 ]]; then
+    # quiet模式只返回退出码，不输出任何内容
     exit $EXIT_CODE
 fi
+
+log "状态检查完成"
+echo "$RESULT_JSON"
+exit $EXIT_CODE
