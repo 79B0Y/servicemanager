@@ -111,12 +111,12 @@ RESULT_JSON=$(jq -n \
 )
 
 if [[ "${1:-}" == "--json" ]]; then
+    mqtt_report "isg/status/$SERVICE_ID/status" "$RESULT_JSON"
     echo "$RESULT_JSON"
     exit 0
 fi
 
 mqtt_report "isg/status/$SERVICE_ID/status" "$RESULT_JSON"
 log "状态检查完成"
-
 echo "$RESULT_JSON"
 exit $EXIT_CODE
