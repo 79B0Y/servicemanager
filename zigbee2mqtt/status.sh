@@ -1,93 +1,118 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
-# Zigbee2MQTT 状态查询脚本
-# 版本: v1.1.0
-# 功能: 检查服务运行状态和 MQTT 桥接状态
+# 通用服务状态查询脚本 - 修正版
+# 版本: v2.1.0
 # =============================================================================
 
 set -euo pipefail
 
-# 加载统一路径定义
+# 1️⃣ 加载配置与路径
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common_paths.sh" || {
-    echo "Error: Cannot load common paths"
+    echo "❌ Error: Cannot load common paths"
     exit 1
 }
 
-# 设置脚本特定的日志文件
 LOG_FILE="$LOG_FILE_STATUS"
-
-# 确保必要目录存在
 ensure_directories
 
-# -----------------------------------------------------------------------------
-# 检查进程状态
-# -----------------------------------------------------------------------------
-PID=$(get_z2m_pid || true)
-RUNTIME=""
-BRIDGE_STATE="offline"
+SERVICE_PORT="${SERVICE_PORT:-8080}"
+SERVICE_INSTALL_PATH="${Z2M_INSTALL_DIR:-/opt/zigbee2mqtt}"
+HTTP_CHECK_PATH="${HTTP_CHECK_PATH:-/}"
+STATUS_MODE="${STATUS_MODE:-0}"
 
-if [ -n "$PID" ]; then
-    RUNTIME=$(ps -o etime= -p "$PID" | xargs)
-    
-    # 检查 MQTT bridge 状态
-    load_mqtt_conf
-    BRIDGE_RAW=$(timeout "$MQTT_TIMEOUT" mosquitto_sub -h "$MQTT_HOST" -p "$MQTT_PORT" \
-        -u "$MQTT_USER" -P "$MQTT_PASS" \
-        -t "zigbee2mqtt/bridge/state" -C 1 2>/dev/null || echo "unknown")
-    
-    # 解析 JSON 格式的桥接状态
-    if command -v jq >/dev/null 2>&1; then
-        BRIDGE_STATE=$(echo "$BRIDGE_RAW" | jq -r '.state // empty' 2>/dev/null || echo "$BRIDGE_RAW")
-    else
-        # 如果没有 jq，尝试简单的文本解析
-        BRIDGE_STATE=$(echo "$BRIDGE_RAW" | grep -o '"state":"[^"]*"' | cut -d'"' -f4 2>/dev/null || echo "$BRIDGE_RAW")
+TS=$(date +%s)
+PID=""
+RUNTIME=""
+HTTP_STATUS="offline"
+INSTALL_STATUS=false
+VERSION="unknown"
+
+# 2️⃣ 进程检测
+get_service_pid() {
+    netstat -tnlp 2>/dev/null | grep ":$SERVICE_PORT " | awk '{print $7}' | cut -d'/' -f1 | head -n1 || true
+}
+
+# 3️⃣ HTTP 健康检查
+check_http_status() {
+    if command -v nc >/dev/null 2>&1; then
+        nc -z 127.0.0.1 "$SERVICE_PORT" && echo "online" && return
+    elif command -v curl >/dev/null 2>&1; then
+        curl -fs --max-time 3 "http://127.0.0.1:$SERVICE_PORT$HTTP_CHECK_PATH" >/dev/null && echo "online" && return
     fi
-    
-    # 如果解析失败，使用原始值
-    [ -z "$BRIDGE_STATE" ] && BRIDGE_STATE="$BRIDGE_RAW"
-    
-    if [ "$BRIDGE_STATE" = "online" ]; then
-        STATUS="running"
-        EXIT=0
-    else
+    echo "offline"
+}
+
+# 4️⃣ 安装与版本检查
+check_install_status() {
+    if proot-distro login "$PROOT_DISTRO" -- test -d "$SERVICE_INSTALL_PATH"; then
+        INSTALL_STATUS=true
+        VERSION=$(proot-distro login "$PROOT_DISTRO" -- bash -c "cd '$SERVICE_INSTALL_PATH' && grep -m1 '\"version\"' package.json | sed -E 's/.*\"version\"[[:space:]]*:[[:space:]]*\"([^\"]+)\".*/\1/'" 2>/dev/null || echo "unknown")
+    fi
+}
+
+# 5️⃣ 执行模式检测
+PID=$(get_service_pid)
+[ -n "$PID" ] && RUNTIME=$(ps -o etime= -p "$PID" | xargs)
+
+case "$STATUS_MODE" in
+    0)
+        check_install_status
+        HTTP_STATUS=$(check_http_status)
+        ;;
+    1)
+        [ -n "$PID" ] && INSTALL_STATUS=true && VERSION="running" && HTTP_STATUS=$(check_http_status)
+        ;;
+    2)
+        check_install_status
+        ;;
+    *)
+        echo "❌ Error: Invalid STATUS_MODE=$STATUS_MODE"
+        exit 99
+        ;;
+esac
+
+# 6️⃣ 最终状态判定
+if [ -n "$PID" ]; then
+    if [ "$HTTP_STATUS" = "offline" ]; then
         STATUS="starting"
         EXIT=2
+    else
+        STATUS="running"
+        EXIT=0
     fi
 else
     STATUS="stopped"
     EXIT=1
-    BRIDGE_STATE="offline"
 fi
 
-# -----------------------------------------------------------------------------
-# 处理命令行参数
-# -----------------------------------------------------------------------------
+# 7️⃣ JSON 输出 & MQTT 上报
+RESULT_JSON=$(jq -n \
+    --arg service "$SERVICE_ID" \
+    --arg status "$STATUS" \
+    --arg pid "$PID" \
+    --arg runtime "$RUNTIME" \
+    --arg http_status "$HTTP_STATUS" \
+    --argjson port "$SERVICE_PORT" \
+    --argjson install "$INSTALL_STATUS" \
+    --arg version "$VERSION" \
+    --argjson timestamp "$TS" \
+    '{service:$service, status:$status, pid:$pid, runtime:$runtime, http_status:$http_status, port:$port, install:$install, version:$version, timestamp:$timestamp}'
+)
+
+mqtt_report "isg/status/$SERVICE_ID/status" "$RESULT_JSON"
+log "$RESULT_JSON"
+
+# 8️⃣ 输出控制
 case "${1:-}" in
     --json)
-        echo "{\"status\":\"$STATUS\",\"pid\":\"$PID\",\"runtime\":\"$RUNTIME\",\"bridge_state\":\"$BRIDGE_STATE\"}"
-        exit $EXIT
+        echo "$RESULT_JSON"
         ;;
     --quiet)
-        exit $EXIT
         ;;
     *)
+        echo "$RESULT_JSON"
         ;;
 esac
-
-# -----------------------------------------------------------------------------
-# 上报状态和记录日志
-# -----------------------------------------------------------------------------
-TS=$(date +%s)
-if [ "$STATUS" = "running" ]; then
-    mqtt_report "isg/status/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"running\",\"pid\":$PID,\"runtime\":\"$RUNTIME\",\"bridge_state\":\"$BRIDGE_STATE\",\"timestamp\":$TS}"
-    log "zigbee2mqtt running (PID=$PID, uptime=$RUNTIME, bridge=$BRIDGE_STATE)"
-elif [ "$STATUS" = "starting" ]; then
-    mqtt_report "isg/status/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"starting\",\"pid\":$PID,\"runtime\":\"$RUNTIME\",\"bridge_state\":\"$BRIDGE_STATE\",\"timestamp\":$TS}"
-    log "zigbee2mqtt starting (PID=$PID, bridge=$BRIDGE_STATE)"
-else
-    mqtt_report "isg/status/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"stopped\",\"message\":\"service not running\",\"timestamp\":$TS}"
-    log "zigbee2mqtt not running"
-fi
 
 exit $EXIT
