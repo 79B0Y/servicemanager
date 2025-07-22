@@ -1,7 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
-# Node-RED 状态查询脚本 (Termux 优化版 + MQTT 上报)
-# 版本: v2.0.2
+# Node-RED 状态查询脚本 (Termux 优化版 + MQTT 上报 + 模式控制)
+# 版本: v2.1.1
 # =============================================================================
 
 set -euo pipefail
@@ -17,6 +17,9 @@ PROOT_DISTRO="${PROOT_DISTRO:-ubuntu}"
 NODERED_INSTALL_PATH="/opt/node-red/node_modules/node-red"
 NODERED_PORT=1880
 HTTP_TIMEOUT=5
+
+# 控制模式: 0=全查, 1=只查运行, 2=只查安装
+CHECK_MODE=${STATUS_MODE:-0}
 
 ensure_directories() {
     mkdir -p "$LOG_DIR"
@@ -75,7 +78,7 @@ get_nodered_pid() {
 # --- 主流程 ---
 ensure_directories
 
-PID=$(get_nodered_pid)
+PID=""
 RUNTIME=""
 HTTP_STATUS="offline"
 STATUS="stopped"
@@ -83,31 +86,42 @@ EXIT=1
 INSTALL_STATUS=false
 NODERED_VERSION="unknown"
 
-if [ -n "$PID" ]; then
-    RUNTIME=$(ps -o etime= -p "$PID" 2>/dev/null | xargs || echo "")
+if [ "$CHECK_MODE" != "2" ]; then
+    PID=$(get_nodered_pid)
+    if [ -n "$PID" ]; then
+        RUNTIME=$(ps -o etime= -p "$PID" 2>/dev/null | xargs || echo "")
 
-    if timeout "$HTTP_TIMEOUT" nc -z 127.0.0.1 "$NODERED_PORT" 2>/dev/null; then
-        HTTP_STATUS="online"
-        STATUS="running"
-        EXIT=0
-    else
-        HTTP_STATUS="starting"
-        STATUS="starting"
-        EXIT=2
+        if timeout "$HTTP_TIMEOUT" nc -z 127.0.0.1 "$NODERED_PORT" 2>/dev/null; then
+            HTTP_STATUS="online"
+            STATUS="running"
+            EXIT=0
+        else
+            HTTP_STATUS="starting"
+            STATUS="starting"
+            EXIT=2
+        fi
+
+        INSTALL_STATUS=true
+        NODERED_VERSION="running"
+        log "Node-RED 处于运行状态，标记已安装"
     fi
+fi
 
-    INSTALL_STATUS=true
-    NODERED_VERSION="running"
-    log "Node-RED 处于运行状态，跳过安装检测"
-else
-    log "Node-RED 未运行，检查是否已安装"
+if [ "$CHECK_MODE" = "2" ] || { [ "$CHECK_MODE" = "0" ] && [ "$INSTALL_STATUS" = false ]; }; then
+    log "检查 Node-RED 是否已安装"
     if check_installation_proot; then
         INSTALL_STATUS=true
         NODERED_VERSION=$(get_version_proot)
         log "Node-RED 已安装，版本: $NODERED_VERSION"
     else
         log "Node-RED 未安装"
+        NODERED_VERSION="unknown"
     fi
+fi
+
+if [ "$CHECK_MODE" = "1" ] && [ "$STATUS" = "stopped" ]; then
+    INSTALL_STATUS=false
+    NODERED_VERSION="unknown"
 fi
 
 STATUS_JSON="{\"service\":\"$SERVICE_ID\",\"status\":\"$STATUS\",\"pid\":\"$PID\",\"runtime\":\"$RUNTIME\",\"http_status\":\"$HTTP_STATUS\",\"port\":\"$NODERED_PORT\",\"install\":$INSTALL_STATUS,\"version\":\"$NODERED_VERSION\",\"timestamp\":$(date +%s)}"
