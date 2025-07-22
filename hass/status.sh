@@ -110,6 +110,11 @@ RESULT_JSON=$(jq -n \
     '{service: $service, status: $status, pid: $pid, runtime: $runtime, http_status: $http_status, port: ($port|tonumber), install: $install, version: $version, timestamp: $timestamp}'
 )
 
+if [[ "$1" == "--json" ]]; then
+    echo "$RESULT_JSON"
+    exit 0
+fi
+
 mqtt_report "isg/status/$SERVICE_ID/status" "$RESULT_JSON"
 log "状态检查完成"
 
