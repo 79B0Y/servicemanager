@@ -72,17 +72,20 @@ log "starting matter-server service"
 mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"starting\",\"message\":\"starting service\",\"timestamp\":$(date +%s)}"
 
 # -----------------------------------------------------------------------------
-# 移除 .disabled 和 down 文件
+# 移除 .disabled 标志
 # -----------------------------------------------------------------------------
 if [ -f "$DISABLED_FLAG" ]; then
     rm -f "$DISABLED_FLAG"
     log "removed .disabled flag"
 fi
 
+# -----------------------------------------------------------------------------
+# 启用自启动
+# -----------------------------------------------------------------------------
 if [ -f "$DOWN_FILE" ]; then
     rm -f "$DOWN_FILE"
-    log "removed down file to enable auto-start"
-    mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"starting\",\"message\":\"removed down file to enable auto-start\",\"timestamp\":$(date +%s)}"
+    log "enabled auto-start by removing down file"
+    mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"starting\",\"message\":\"enabled auto-start\",\"timestamp\":$(date +%s)}"
 fi
 
 # -----------------------------------------------------------------------------
@@ -90,7 +93,7 @@ fi
 # -----------------------------------------------------------------------------
 if [ -e "$CONTROL_FILE" ]; then
     echo u > "$CONTROL_FILE"
-    log "sent 'u' command to $CONTROL_FILE"
+    log "sent 'u' command to start service"
 else
     log "control file not found; cannot start service"
     mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"failed\",\"message\":\"supervise control file not found\",\"timestamp\":$(date +%s)}"
