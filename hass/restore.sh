@@ -1,41 +1,122 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
-# Home Assistant 还原脚本
-# 版本: v1.4.1
+# Home Assistant 还原脚本 - 优化版本
+# 版本: v1.5.0
 # 功能: 智能还原备份文件或生成默认配置
-# 优化: 增加智能判断逻辑 - 根据HA状态和备份文件情况智能决策
+# 优化: 1. 移除"HA运行+存在备份"的跳过逻辑 2. 不依赖common_paths.sh
 # =============================================================================
 
 set -euo pipefail
 
-# 加载统一路径定义
+# =============================================================================
+# 独立路径配置
+# =============================================================================
+SERVICE_ID="hass"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/common_paths.sh" || {
-    echo "Error: Cannot load common paths"
-    exit 1
+BASE_DIR="/data/data/com.termux/files/home/servicemanager"
+SERVICE_DIR="$BASE_DIR/$SERVICE_ID"
+
+# 配置文件路径
+CONFIG_FILE="$BASE_DIR/configuration.yaml"
+SERVICEUPDATE_FILE="$BASE_DIR/serviceupdate.json"
+VERSION_FILE="$SERVICE_DIR/VERSION.yaml"
+
+# 日志和临时文件
+LOG_DIR="$SERVICE_DIR/logs"
+LOG_FILE="$LOG_DIR/restore.log"
+TEMP_DIR="/data/data/com.termux/files/usr/tmp"
+
+# 备份相关
+BACKUP_DIR="${BACKUP_DIR:-/sdcard/isgbackup/$SERVICE_ID}"
+KEEP_BACKUPS="${KEEP_BACKUPS:-3}"
+INSTALL_HISTORY_FILE="$BACKUP_DIR/.install_history"
+UPDATE_HISTORY_FILE="$BACKUP_DIR/.update_history"
+
+# 容器相关
+PROOT_DISTRO="${PROOT_DISTRO:-ubuntu}"
+PROOT_ROOTFS="/data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/$PROOT_DISTRO"
+HA_VENV_DIR="/root/homeassistant"
+HA_CONFIG_DIR="/root/.homeassistant"
+
+# 服务参数
+MAX_WAIT="${MAX_WAIT:-300}"
+INTERVAL="${INTERVAL:-5}"
+
+# =============================================================================
+# 独立工具函数
+# =============================================================================
+
+# 确保目录存在
+ensure_directories() {
+    mkdir -p "$LOG_DIR" "$BACKUP_DIR" "$TEMP_DIR" 2>/dev/null || true
 }
 
-# 设置脚本特定的日志文件
-LOG_FILE="$LOG_FILE_RESTORE"
+# 日志记录
+log() {
+    echo "[$(date '+%F %T')] $*" | tee -a "$LOG_FILE"
+}
 
-# 确保必要目录存在
-ensure_directories
+# 加载 MQTT 配置
+load_mqtt_conf() {
+    if [[ -f "$CONFIG_FILE" ]]; then
+        MQTT_HOST=$(grep -Po '^[[:space:]]*host:[[:space:]]*\K.*' "$CONFIG_FILE" 2>/dev/null | head -n1 || echo "127.0.0.1")
+        MQTT_PORT=$(grep -Po '^[[:space:]]*port:[[:space:]]*\K.*' "$CONFIG_FILE" 2>/dev/null | head -n1 || echo "1883")
+        MQTT_USER=$(grep -Po '^[[:space:]]*username:[[:space:]]*\K.*' "$CONFIG_FILE" 2>/dev/null | head -n1 || echo "admin")
+        MQTT_PASS=$(grep -Po '^[[:space:]]*password:[[:space:]]*\K.*' "$CONFIG_FILE" 2>/dev/null | head -n1 || echo "admin")
+    else
+        MQTT_HOST="127.0.0.1"
+        MQTT_PORT="1883"
+        MQTT_USER="admin"
+        MQTT_PASS="admin"
+    fi
+}
 
-# 确保配置目录存在
-proot-distro login "$PROOT_DISTRO" -- mkdir -p "$HA_CONFIG_DIR"
+# MQTT 消息发布
+mqtt_report() {
+    local topic="$1"
+    local payload="$2"
+    
+    load_mqtt_conf
+    mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" -u "$MQTT_USER" -P "$MQTT_PASS" -t "$topic" -m "$payload" 2>/dev/null || true
+    log "[MQTT] $topic -> $payload"
+}
 
-START_TIME=$(date +%s)
-CUSTOM_BACKUP_FILE="${RESTORE_FILE:-}"
-ORIGINAL_BACKUP_FILE="$BACKUP_DIR/homeassistant_original.tar.gz"
+# 检查 Home Assistant 运行状态
+check_ha_status() {
+    if bash "$SERVICE_DIR/status.sh" --quiet 2>/dev/null; then
+        echo "running"
+    else
+        echo "stopped"
+    fi
+}
 
-# -----------------------------------------------------------------------------
+# 创建当前状态的备份
+create_backup_before_restore() {
+    log "creating backup of current Home Assistant configuration"
+    mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"restoring\",\"message\":\"creating backup before restore\",\"timestamp\":$(date +%s)}"
+    
+    local backup_file="$BACKUP_DIR/homeassistant_before_restore_$(date +%Y%m%d-%H%M%S).tar.gz"
+    local temp_backup="/tmp/backup_temp_$(date +%s).tar.gz"
+    local container_backup="$PROOT_ROOTFS$temp_backup"
+    
+    # 在容器内创建备份到临时位置
+    if proot-distro login "$PROOT_DISTRO" -- bash -c "tar -czf '$temp_backup' -C '/root' '.homeassistant'"; then
+        # 移动到最终位置
+        mv "$container_backup" "$backup_file"
+        log "backup created: $(basename "$backup_file")"
+        return 0
+    else
+        log "warning: failed to create backup before restore"
+        return 1
+    fi
+}
+
 # 生成默认配置文件
-# -----------------------------------------------------------------------------
 generate_default_config() {
     log "generating default Home Assistant configuration"
     
-    # 获取 MQTT 配置
-    load_mqtt_conf
+    # 确保配置目录存在
+    proot-distro login "$PROOT_DISTRO" -- mkdir -p "$HA_CONFIG_DIR"
     
     # 生成基础配置文件
     proot-distro login "$PROOT_DISTRO" -- bash -c "cat > $HA_CONFIG_DIR/configuration.yaml << 'EOF'
@@ -64,14 +145,14 @@ logger:
   logs:
     homeassistant.core: info
 
-# Time zone configuration
+# Homeassistant configuration
 homeassistant:
   name: Home
-  latitude: !secret latitude
-  longitude: !secret longitude
-  elevation: !secret elevation
+  latitude: 39.9042
+  longitude: 116.4074
+  elevation: 43
   unit_system: metric
-  time_zone: !secret time_zone
+  time_zone: Asia/Shanghai
   currency: CNY
   country: CN
 EOF"
@@ -96,38 +177,7 @@ EOF"
     log "default configuration generated successfully"
 }
 
-# -----------------------------------------------------------------------------
-# 检查 Home Assistant 运行状态
-# -----------------------------------------------------------------------------
-check_ha_status() {
-    if bash "$SERVICE_DIR/status.sh" --quiet 2>/dev/null; then
-        echo "running"
-    else
-        echo "stopped"
-    fi
-}
-
-# -----------------------------------------------------------------------------
-# 创建当前状态的备份
-# -----------------------------------------------------------------------------
-create_backup_before_restore() {
-    log "creating backup of current Home Assistant configuration"
-    mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"restoring\",\"message\":\"creating backup before restore\",\"timestamp\":$(date +%s)}"
-    
-    local backup_file="$BACKUP_DIR/homeassistant_before_restore_$(date +%Y%m%d-%H%M%S).tar.gz"
-    
-    if proot-distro login "$PROOT_DISTRO" -- bash -c "tar -czf \"$backup_file\" -C \"$(dirname $HA_CONFIG_DIR)\" \"$(basename $HA_CONFIG_DIR)\""; then
-        log "backup created: $(basename "$backup_file")"
-        return 0
-    else
-        log "warning: failed to create backup before restore"
-        return 1
-    fi
-}
-
-# -----------------------------------------------------------------------------
 # 执行还原操作
-# -----------------------------------------------------------------------------
 perform_restore() {
     local restore_file="$1"
     local method="$2"
@@ -146,7 +196,7 @@ perform_restore() {
     if [[ "$ext_lower" == "zip" ]]; then
         log "detected zip file, converting to tar.gz"
         
-        local temp_dir="$RESTORE_TEMP_DIR"
+        local temp_dir="$TEMP_DIR/restore_temp_$(date +%s)"
         local converted_file="$BACKUP_DIR/homeassistant_converted_$(date +%Y%m%d-%H%M%S).tar.gz"
         
         # 创建临时目录并解压
@@ -199,13 +249,41 @@ perform_restore() {
         return 1
     fi
     
+    # 将备份文件复制到容器内可访问位置
+    local container_restore="/tmp/restore_$(date +%s).tar.gz"
+    local container_restore_host="$PROOT_ROOTFS$container_restore"
+    
+    log "copying backup file to container"
+    cp "$final_restore_file" "$container_restore_host"
+    
     # 执行还原
-    if proot-distro login "$PROOT_DISTRO" -- bash -c "rm -rf \"$HA_CONFIG_DIR\" && mkdir -p \"$HA_CONFIG_DIR\" && tar -xzf \"$final_restore_file\" -C \"$(dirname $HA_CONFIG_DIR)\""; then
-        log "restore completed successfully"
+    if proot-distro login "$PROOT_DISTRO" -- bash -c "
+        set -e
+        echo 'Removing old configuration'
+        rm -rf '$HA_CONFIG_DIR'
+        echo 'Creating configuration directory'
+        mkdir -p '$HA_CONFIG_DIR'
+        echo 'Extracting backup'
+        tar -xzf '$container_restore' -C '/root'
+        echo 'Cleaning up temporary file'
+        rm -f '$container_restore'
+        echo 'Restore extraction completed'
+    "; then
+        log "restore extraction completed successfully"
         
         # 启动服务
+        log "starting Home Assistant service"
         bash "$SERVICE_DIR/start.sh"
-        sleep 30
+        
+        # 等待服务启动
+        local waited=0
+        while [ "$waited" -lt "$MAX_WAIT" ]; do
+            if bash "$SERVICE_DIR/status.sh" --quiet; then
+                break
+            fi
+            sleep "$INTERVAL"
+            waited=$((waited + INTERVAL))
+        done
         
         # 验证服务状态
         if bash "$SERVICE_DIR/status.sh" --quiet; then
@@ -224,21 +302,30 @@ perform_restore() {
             fi
             return 0
         else
-            log "restore succeeded but service did not start"
+            log "restore succeeded but service failed to start"
             mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"service failed to start after restore\",\"method\":\"$method\",\"timestamp\":$(date +%s)}"
             return 1
         fi
     else
-        log "restore failed inside proot container"
-        mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"restore failed inside proot container\",\"timestamp\":$(date +%s)}"
+        log "restore failed during extraction"
+        mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"restore failed during extraction\",\"timestamp\":$(date +%s)}"
+        # 清理容器内的临时文件
+        proot-distro login "$PROOT_DISTRO" -- rm -f "$container_restore" 2>/dev/null || true
         return 1
     fi
 }
 
-# -----------------------------------------------------------------------------
-# 主要逻辑开始
-# -----------------------------------------------------------------------------
-log "starting intelligent Home Assistant restore process"
+# =============================================================================
+# 主程序开始
+# =============================================================================
+
+START_TIME=$(date +%s)
+CUSTOM_BACKUP_FILE="${RESTORE_FILE:-}"
+
+# 初始化
+ensure_directories
+
+log "starting Home Assistant restore process"
 
 # 获取当前 HA 运行状态
 HA_STATUS=$(check_ha_status)
@@ -248,7 +335,7 @@ log "current Home Assistant status: $HA_STATUS"
 # 场景1: 用户指定了备份文件
 # =============================================================================
 if [ -n "$CUSTOM_BACKUP_FILE" ]; then
-    log "scenario 1: user specified backup file"
+    log "scenario: user specified backup file"
     
     if [ -f "$CUSTOM_BACKUP_FILE" ]; then
         log "using user specified file: $CUSTOM_BACKUP_FILE"
@@ -275,47 +362,17 @@ if [ -n "$CUSTOM_BACKUP_FILE" ]; then
 fi
 
 # =============================================================================
-# 场景2: HA正在运行，没有指定备份文件
+# 场景2: 自动查找备份文件进行还原
 # =============================================================================
-if [ "$HA_STATUS" = "running" ]; then
-    log "scenario 2: Home Assistant is running, no backup file specified"
-    
-    # 检查是否有最新备份文件
-    LATEST_BACKUP=$(ls -1t "$BACKUP_DIR"/homeassistant_backup_*.tar.gz 2>/dev/null | head -n1 || true)
-    
-    if [ -n "$LATEST_BACKUP" ] && [ -f "$LATEST_BACKUP" ]; then
-        log "found existing backup files, creating new backup and skipping restore"
-        mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"skipped\",\"message\":\"service running and backups exist - created new backup\",\"timestamp\":$(date +%s)}"
-        
-        # 创建当前状态的备份
-        if bash "$SERVICE_DIR/backup.sh"; then
-            log "backup created successfully, restore operation skipped"
-            exit 0
-        else
-            log "backup creation failed"
-            mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"backup creation failed\",\"timestamp\":$(date +%s)}"
-            exit 1
-        fi
-    else
-        log "no existing backups found, creating initial backup and skipping restore"
-        mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"skipped\",\"message\":\"service running - created initial backup\",\"timestamp\":$(date +%s)}"
-        
-        # 创建初始备份
-        if bash "$SERVICE_DIR/backup.sh"; then
-            log "initial backup created successfully, restore operation skipped"
-            exit 0
-        else
-            log "initial backup creation failed"
-            mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"initial backup creation failed\",\"timestamp\":$(date +%s)}"
-            exit 1
-        fi
-    fi
-fi
+log "scenario: automatic backup search and restore"
 
-# =============================================================================
-# 场景3: HA已停止，没有指定备份文件
-# =============================================================================
-log "scenario 3: Home Assistant is stopped, no backup file specified"
+# 如果HA正在运行，先停止服务并创建备份
+if [ "$HA_STATUS" = "running" ]; then
+    log "Home Assistant is running, will stop service for restore"
+    create_backup_before_restore
+    bash "$SERVICE_DIR/stop.sh"
+    sleep 5
+fi
 
 # 优先级1: 查找最新的常规备份
 LATEST_BACKUP=$(ls -1t "$BACKUP_DIR"/homeassistant_backup_*.tar.gz 2>/dev/null | head -n1 || true)
@@ -330,6 +387,7 @@ if [ -n "$LATEST_BACKUP" ] && [ -f "$LATEST_BACKUP" ]; then
 fi
 
 # 优先级2: 查找 homeassistant_original.tar.gz
+ORIGINAL_BACKUP_FILE="$BACKUP_DIR/homeassistant_original.tar.gz"
 if [ -f "$ORIGINAL_BACKUP_FILE" ]; then
     log "found original backup file: $ORIGINAL_BACKUP_FILE"
     if perform_restore "$ORIGINAL_BACKUP_FILE" "original_backup"; then
@@ -341,19 +399,20 @@ else
     log "original backup file not found: $ORIGINAL_BACKUP_FILE"
 fi
 
-# 优先级3: 生成默认配置
-log "no backup files available, generating default configuration"
+# =============================================================================
+# 场景3: 生成默认配置
+# =============================================================================
+log "scenario: no backup files available, generating default configuration"
 mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"restoring\",\"method\":\"default_config\",\"timestamp\":$(date +%s)}"
 
 # 生成默认配置
 generate_default_config
 
 # 启动服务验证配置
+log "starting Home Assistant with new configuration"
 bash "$SERVICE_DIR/start.sh"
 
 # 等待并验证服务状态
-MAX_WAIT=180
-INTERVAL=5
 WAITED=0
 log "waiting for Home Assistant to start with new configuration"
 
