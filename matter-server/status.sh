@@ -1,11 +1,16 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
-# Matter Server 状态查询脚本 - 完整增强版
-# 版本: v1.2.0
-# 功能：支持运行状态、安装状态、端口监听、版本获取、MQTT 上报、JSON 输出
+# Matter Server 状态查询脚本 - 完整增强版 with proot 修复
+# 版本: v1.2.1
+# 增强点：修复 proot-distro 下对 stdout 的绑定失败报错
 # =============================================================================
 
 set -euo pipefail
+
+# ---------------------------- 环境修复 ----------------------------
+# 避免 proot 调用 stdout/stderr 绑定失败
+export PROOT_NO_SECCOMP=1
+export LD_PRELOAD=""
 
 # ---------------------------- 基本配置 ----------------------------
 SERVICE_ID="matter-server"
@@ -62,7 +67,6 @@ mqtt_report() {
 
 # ---------------------------- 状态检测 ----------------------------
 get_service_pid() {
-    # 匹配 python + matter-server 的进程
     ps aux | grep -E '[p]ython.*/matter[-_]server' | awk '{print $2}' | head -n1
 }
 
@@ -100,7 +104,6 @@ PID="" RUNTIME="" HTTP_STATUS="offline" WS_STATUS="offline" INSTALL_STATUS="fals
 STATUS="stopped" EXIT_CODE=1
 
 if [[ "$IS_JSON_MODE" -eq 0 && "$IS_QUIET_MODE" -eq 0 ]]; then
-    # 快速模式
     PID=$(get_service_pid 2>/dev/null || true)
     if [[ -n "$PID" ]]; then
         HTTP_STATUS=$(check_http_status)
@@ -108,7 +111,6 @@ if [[ "$IS_JSON_MODE" -eq 0 && "$IS_QUIET_MODE" -eq 0 ]]; then
         [[ "$HTTP_STATUS" == "online" ]] && STATUS="running" && EXIT_CODE=0
     fi
 else
-    # JSON 或完整模式
     if [[ "$STATUS_MODE" != "2" ]]; then
         PID=$(get_service_pid 2>/dev/null || true)
         [[ -n "$PID" ]] && RUNTIME=$(ps -o etime= -p "$PID" 2>/dev/null | xargs || echo "")
@@ -124,7 +126,6 @@ else
     [[ "$STATUS" == "running" && "$INSTALL_STATUS" != "true" ]] && INSTALL_STATUS="true"
 fi
 
-# ---------------------------- 输出 ----------------------------
 if [[ "$IS_JSON_MODE" -eq 1 ]]; then
     RESULT_JSON=$(jq -n \
         --arg service "$SERVICE_ID" \
