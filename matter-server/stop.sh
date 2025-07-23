@@ -90,16 +90,18 @@ log "stopping matter-server service"
 mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"stopping\",\"message\":\"stopping service\",\"timestamp\":$(date +%s)}"
 
 # -----------------------------------------------------------------------------
+# 禁用自启动
+# -----------------------------------------------------------------------------
+touch "$DOWN_FILE"
+log "disabled auto-start by creating down file"
+mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"stopping\",\"message\":\"disabled auto-start\",\"timestamp\":$(date +%s)}"
+
+# -----------------------------------------------------------------------------
 # 发送停止信号
 # -----------------------------------------------------------------------------
 if [ -e "$CONTROL_FILE" ]; then
     echo d > "$CONTROL_FILE"
-    log "sent 'd' command to $CONTROL_FILE"
-    
-    # 创建 down 文件禁用自启动
-    touch "$DOWN_FILE"
-    log "created down file to disable auto-start"
-    mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"stopping\",\"message\":\"created down file to disable auto-start\",\"timestamp\":$(date +%s)}"
+    log "sent 'd' command to stop service"
 else
     log "control file not found; fallback to kill process"
     MATTER_PID=$(get_matter_pid || true)
