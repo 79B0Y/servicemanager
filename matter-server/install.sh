@@ -373,86 +373,35 @@ proot-distro login "$PROOT_DISTRO" -- mkdir -p "$MATTER_INSTALL_DIR/storage"
 log "registering servicemonitor service"
 mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"registering servicemonitor service\",\"timestamp\":$(date +%s)}"
 
-# 创建服务目录
+# service monitor 路径
+SERVICE_CONTROL_DIR="/data/data/com.termux/files/usr/var/service/$SERVICE_ID"
+# run 文件路径
+RUN_FILE="$SERVICE_CONTROL_DIR/run"
+# down 文件路径
+DOWN_FILE="$SERVICE_CONTROL_DIR/down"
+
+# 确保 service monitor 目录存在
 mkdir -p "$SERVICE_CONTROL_DIR"
 
-# 写入 run 启动脚本
 cat << 'EOF' > "$RUN_FILE"
-#!/data/data/com.termux/files/usr/bin/bash
-# =============================================================================
-# Matter Server Run 脚本 - isgservicemonitor 服务启动脚本
-# 版本: v1.0.0
-# 功能: 由 isgservicemonitor 调用，启动 Matter Server 守护进程
-# =============================================================================
+#!/data/data/com.termux/files/usr/bin/sh
 
-set -euo pipefail
-
-# 基础配置
-SERVICE_ID="matter-server"
-PROOT_DISTRO="${PROOT_DISTRO:-ubuntu}"
-MATTER_INSTALL_DIR="/opt/matter-server"
-MATTER_ENV_DIR="$MATTER_INSTALL_DIR/venv"
-MATTER_CONFIG_FILE="$MATTER_INSTALL_DIR/config.yaml"
-
-# 日志文件
-LOG_FILE="/data/data/com.termux/files/home/servicemanager/$SERVICE_ID/logs/run.log"
-mkdir -p "$(dirname "$LOG_FILE")"
-
-# 日志记录函数
-log_run() {
-    echo "[$(date '+%F %T')] $*" >> "$LOG_FILE"
-}
-
-# 清理函数
-cleanup() {
-    log_run "Matter Server shutting down..."
-    exit 0
-}
-
-# 设置信号处理
-trap cleanup TERM INT
-
-log_run "Starting Matter Server daemon..."
-
-# 检查安装目录
-if ! proot-distro login "$PROOT_DISTRO" -- test -d "$MATTER_INSTALL_DIR"; then
-    log_run "ERROR: Matter Server installation directory not found: $MATTER_INSTALL_DIR"
-    exit 1
-fi
-
-# 检查虚拟环境
-if ! proot-distro login "$PROOT_DISTRO" -- test -d "$MATTER_ENV_DIR"; then
-    log_run "ERROR: Python virtual environment not found: $MATTER_ENV_DIR"
-    exit 1
-fi
-
-# 检查配置文件
-if ! proot-distro login "$PROOT_DISTRO" -- test -f "$MATTER_CONFIG_FILE"; then
-    log_run "ERROR: Configuration file not found: $MATTER_CONFIG_FILE"
-    exit 1
-fi
-
-log_run "All prerequisites checked, starting Matter Server..."
-
-# 启动 Matter Server
-exec proot-distro login "$PROOT_DISTRO" -- bash -c "
-    cd $MATTER_INSTALL_DIR
-    source $MATTER_ENV_DIR/bin/activate
-    
-    # 启动 python-matter-server
-    exec python -m matter_server --config $MATTER_CONFIG_FILE
-" 2>&1 | while IFS= read -r line; do
-    echo "[$(date '+%F %T')] $line" >> "$LOG_FILE"
-done
-
-log_run "Matter Server process ended"
+export PROCESS_TAG="$PROCESS_TAG"
+exec proot-distro login ubuntu << 'INNER_EOF'
+cd /opt/matter-server/
+source venv/bin/activate
+matter-server
+INNER_EOF
 EOF
 
-# 赋予执行权限
+# 赋予 run 文件执行权限
 chmod +x "$RUN_FILE"
 
-# 创建 down 文件（初始状态不自启）
+# 创建 down 文件,禁用服务的自动启动
 touch "$DOWN_FILE"
+
+# 提示 run 与 down 文件生成成功
+log "✅ run 和 down 文件已生成: $RUN_FILE, $DOWN_FILE"
 
 log "servicemonitor service registered successfully"
 
