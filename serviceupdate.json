@@ -113,6 +113,38 @@
       ],
        "config":{},
       "notes": "Improved Zigbee adapter support."
+    },
+    {
+      "id": "matter-server",
+      "display_name": "Matter Server",
+      "enabled": true,
+      "current_script_version": "1.0.0",
+      "latest_script_version": "1.0.0",
+      "latest_script_package_url": "https://dl.linknlink.com/services/matter-server-scripts-1.0.0.tar.gz",
+      "latest_script_package_sha256": "abc123def456...",
+      "current_service_version": "6.1.0",
+      "latest_service_version": "6.1.0",
+      "upgrade_dependencies": [
+        "cryptography>=41.0.0",
+        "chip-python>=2023.9.28"
+      ],
+      "install_dependencies": [
+        "build-essential",
+        "libssl-dev",
+        "libffi-dev",
+        "python3-dev",
+        "git",
+        "cmake",
+        "ninja-build"
+      ],
+      "config": {
+        "matter_port": "8443",
+        "ws_port": "5540",
+        "storage_path": "/opt/matter-server/storage",
+        "ssl_enabled": true,
+        "log_level": "INFO"
+      },
+      "notes": "Matter Thread/WiFi ecosystem support with WebSocket API."
     }
   ]
 }
