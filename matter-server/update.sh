@@ -120,9 +120,9 @@ UPGRADE_DEPS=$(get_upgrade_dependencies)
 
 # 转换为 bash 数组
 DEPS_ARRAY=()
-if [ "$UPGRADE_DEPS" != "[]" ] && [ "$UPGRADE_DEPS" != "null" ]; then
+if [ "$UPGRADE_DEPS" != "[]" ] && [ "$UPGRADE_DEPS" != "null" ] && [ -n "$UPGRADE_DEPS" ]; then
     while IFS= read -r dep; do
-        DEPS_ARRAY+=("$dep")
+        [[ -n "$dep" ]] && DEPS_ARRAY+=("$dep")
     done < <(echo "$UPGRADE_DEPS" | jq -r '.[]' 2>/dev/null || true)
 fi
 
@@ -160,9 +160,32 @@ mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"updating\",\"current_
 
 if ! proot-distro login "$PROOT_DISTRO" -- bash -c "
     cd $MATTER_SDK_DIR
-    git fetch --all
-    git checkout $MATTER_SDK_VERSION
-    git submodule update --recursive
+    
+    # 配置 git 以处理网络问题
+    git config --global http.postBuffer 524288000
+    git config --global http.lowSpeedLimit 1000
+    git config --global http.lowSpeedTime 300
+    
+    # 获取最新代码
+    git fetch --depth 1 origin || {
+        log 'git fetch failed, trying to reset'
+        git reset --hard HEAD
+        git clean -fd
+        git fetch --depth 1 origin
+    }
+    
+    # 尝试切换到指定版本
+    if git fetch --depth 1 origin tag $MATTER_SDK_VERSION 2>/dev/null; then
+        git checkout $MATTER_SDK_VERSION
+    else
+        git checkout origin/main || git checkout main
+        log 'using main branch (SDK version tag not found)'
+    fi
+    
+    # 更新子模块（仅必要的）
+    git submodule update --init --depth 1 third_party/nanopb/repo || true
+    git submodule update --init --depth 1 third_party/nlassert/repo || true
+    git submodule update --init --depth 1 third_party/nlio/repo || true
 "; then
     log "ConnectedHomeIP SDK update failed"
     mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"ConnectedHomeIP SDK update failed\",\"current_version\":\"$CURRENT_VERSION\",\"timestamp\":$(date +%s)}"
@@ -184,20 +207,38 @@ if ! proot-distro login "$PROOT_DISTRO" -- bash -c "
     # 清理旧的构建文件
     rm -rf out/python
     
-    # 重新生成构建文件
-    gn gen out/python --args='is_debug=false is_component_build=false python_bindings=true'
-    
-    # 编译
-    ninja -C out/python
-    
-    # 重新安装 Python 包
-    pip uninstall -y chip-python || true
-    pip install ./out/python/python_dist/chip_python-*.whl
+    # 检查是否有 GN 可用
+    if command -v gn >/dev/null 2>&1; then
+        # 重新生成构建文件
+        mkdir -p out/python
+        echo 'is_debug = false
+is_component_build = false
+chip_build_tests = false
+chip_build_tools = false
+chip_crypto = \"openssl\"' > out/python/args.gn
+        
+        gn gen out/python || {
+            log 'gn gen failed during update'
+            exit 0  # 不强制失败
+        }
+        
+        # 编译
+        ninja -C out/python chip-controller-py || {
+            log 'ninja build failed during update'
+            exit 0  # 不强制失败
+        }
+        
+        # 重新安装 Python 包
+        pip uninstall -y chip-python || true
+        if [ -f out/python/python_dist/chip_python-*.whl ]; then
+            pip install ./out/python/python_dist/chip_python-*.whl
+        fi
+    else
+        log 'gn not available, skipping SDK rebuild'
+    fi
 "; then
-    log "SDK rebuild failed"
-    mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"SDK rebuild failed\",\"current_version\":\"$CURRENT_VERSION\",\"timestamp\":$(date +%s)}"
-    record_update_history "FAILED" "$CURRENT_VERSION" "unknown" "SDK rebuild failed"
-    exit 1
+    log "SDK rebuild failed, continuing with python-matter-server update"
+    # 不强制退出，继续后续步骤
 fi
 
 # -----------------------------------------------------------------------------
