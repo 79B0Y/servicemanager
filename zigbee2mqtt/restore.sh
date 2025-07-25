@@ -1,8 +1,14 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
 # Zigbee2MQTT 还原脚本
-# 版本: v1.1.1 - 修复版
+# 版本: v1.1.1 - 修复版 + 强制配置模式
 # 功能: 还原备份文件或生成默认配置
+# 
+# 用法:
+#   bash restore.sh              # 自动选择备份文件或生成默认配置
+#   bash restore.sh --config     # 强制生成默认配置，跳过备份文件检查
+#   bash restore.sh -c           # 同上，短参数形式
+#   RESTORE_FILE=xxx bash restore.sh  # 使用指定的备份文件
 # =============================================================================
 
 set -euo pipefail
@@ -143,6 +149,29 @@ check_service_status() {
 START_TIME=$(date +%s)
 CUSTOM_BACKUP_FILE="${RESTORE_FILE:-}"
 
+# 解析命令行参数
+FORCE_CONFIG_MODE=false
+
+# 处理命令行参数
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --config|-c)
+            FORCE_CONFIG_MODE=true
+            log "强制配置模式: 将直接生成默认配置"
+            shift
+            ;;
+        --help|-h)
+            show_usage
+            exit 0
+            ;;
+        *)
+            echo "错误: 未知参数 '$1'"
+            echo "使用 --help 查看帮助信息"
+            exit 1
+            ;;
+    esac
+done
+
 # 确保必要目录存在
 ensure_directories
 
@@ -163,7 +192,7 @@ generate_default_config() {
     
     # 读取检测结果，使用更健壮的JSON解析方式
     SERIAL_PORT=""
-    ADAPTER_TYPE="ezsp"
+    ADAPTER_TYPE=""
     BAUDRATE=115200
     
     # 首先检查JSON文件格式
@@ -191,7 +220,10 @@ try:
     
     for port in ports:
         if port.get('type') == 'zigbee' and not port.get('busy', False):
-            print(f\"{port['port']}|{port.get('protocol', 'ezsp')}|{port.get('baudrate', 115200)}\")
+            # 从探测结果中获取协议类型，如果没有则使用默认值
+            protocol = port.get('protocol', 'ezsp')
+            baudrate = port.get('baudrate', 115200)
+            print(f\"{port['port']}|{protocol}|{baudrate}\")
             sys.exit(0)
     
     print('NO_ZIGBEE_FOUND')
@@ -220,6 +252,11 @@ except Exception as e:
         return 1
     fi
     
+    if [ -z "$ADAPTER_TYPE" ]; then
+        log "警告: 无法获取适配器类型，使用默认值 ezsp"
+        ADAPTER_TYPE="ezsp"
+    fi
+    
     log "选择的Zigbee适配器: $SERIAL_PORT (协议: $ADAPTER_TYPE, 波特率: $BAUDRATE)"
     
     # 获取 MQTT 配置
@@ -227,6 +264,7 @@ except Exception as e:
     
     # 生成标准格式的配置文件到备份目录
     log "生成配置文件: $DEFAULT_CONFIG_FILE"
+    log "配置详情: 串口=$SERIAL_PORT, 适配器=$ADAPTER_TYPE, 波特率=$BAUDRATE"
     cat > "$DEFAULT_CONFIG_FILE" << EOF
 advanced:
   network_key: GENERATE
@@ -264,11 +302,16 @@ EOF
 }
 
 # -----------------------------------------------------------------------------
-# 确定恢复文件
+# 确定恢复文件 - 支持强制配置模式
 # -----------------------------------------------------------------------------
 log "开始Zigbee2MQTT还原过程"
 
-if [ -n "$CUSTOM_BACKUP_FILE" ]; then
+# 如果是强制配置模式，直接跳转到默认配置生成
+if [ "$FORCE_CONFIG_MODE" = true ]; then
+    log "强制配置模式: 跳过备份文件检查，直接生成默认配置"
+    RESTORE_FILE=""
+    METHOD="forced_default_config"
+elif [ -n "$CUSTOM_BACKUP_FILE" ]; then
     RESTORE_FILE="$CUSTOM_BACKUP_FILE"
     if [ -f "$RESTORE_FILE" ]; then
         log "使用用户指定的文件: $RESTORE_FILE"
@@ -291,11 +334,16 @@ else
 fi
 
 # -----------------------------------------------------------------------------
-# 处理无备份文件的情况 - 生成默认配置
+# 处理无备份文件的情况或强制配置模式 - 生成默认配置
 # -----------------------------------------------------------------------------
-if [ -z "$RESTORE_FILE" ]; then
-    log "未找到备份文件，开始生成默认配置流程"
-    mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"restoring\",\"method\":\"default_config\",\"timestamp\":$(date +%s)}"
+if [ -z "$RESTORE_FILE" ] || [ "$FORCE_CONFIG_MODE" = true ]; then
+    if [ "$FORCE_CONFIG_MODE" = true ]; then
+        log "强制配置模式: 开始生成默认配置流程"
+        mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"restoring\",\"method\":\"forced_default_config\",\"timestamp\":$(date +%s)}"
+    else
+        log "未找到备份文件，开始生成默认配置流程"
+        mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"restoring\",\"method\":\"default_config\",\"timestamp\":$(date +%s)}"
+    fi
     
     # 停止服务以释放串口资源
     log "停止zigbee2mqtt服务以释放串口资源"
@@ -401,11 +449,16 @@ except:
     if check_service_status; then
         END_TIME=$(date +%s)
         DURATION=$((END_TIME - START_TIME))
-        mqtt_report "isg/restore/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"success\",\"method\":\"default_config\",\"zigbee_devices_found\":$ZIGBEE_DEVICES,\"duration\":$DURATION,\"startup_time\":$WAITED,\"timestamp\":$END_TIME}"
-        log "默认配置生成完成，服务成功启动 (总耗时: ${DURATION}秒, 启动时间: ${WAITED}秒)"
+        if [ "$FORCE_CONFIG_MODE" = true ]; then
+            mqtt_report "isg/restore/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"success\",\"method\":\"forced_default_config\",\"zigbee_devices_found\":$ZIGBEE_DEVICES,\"duration\":$DURATION,\"startup_time\":$WAITED,\"timestamp\":$END_TIME}"
+            log "强制配置模式完成，服务成功启动 (总耗时: ${DURATION}秒, 启动时间: ${WAITED}秒)"
+        else
+            mqtt_report "isg/restore/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"success\",\"method\":\"default_config\",\"zigbee_devices_found\":$ZIGBEE_DEVICES,\"duration\":$DURATION,\"startup_time\":$WAITED,\"timestamp\":$END_TIME}"
+            log "默认配置生成完成，服务成功启动 (总耗时: ${DURATION}秒, 启动时间: ${WAITED}秒)"
+        fi
     else
         log "错误: 服务在 ${MAX_WAIT}秒 后仍未能使用新配置启动"
-        mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"service failed to start after config generation\",\"method\":\"default_config\",\"max_wait\":$MAX_WAIT,\"timestamp\":$(date +%s)}"
+        mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"service failed to start after config generation\",\"method\":\"$METHOD\",\"max_wait\":$MAX_WAIT,\"timestamp\":$(date +%s)}"
         exit 1
     fi
     
