@@ -1,6 +1,6 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
-# 增强版 Matter Server 安装脚本
+# 增强版 Matter Server 安装脚本（含 ws 5580 支持）
 # - 适用于 Termux + Proot Ubuntu
 # - Python 3.13.3
 # - 自动编译 CHIP、生成证书、动态写入 config.yaml
@@ -18,7 +18,8 @@ MATTER_INSTALL_DIR="/opt/matter-server"
 MATTER_DATA_DIR="$MATTER_INSTALL_DIR/data"
 MATTER_VENV_DIR="$MATTER_INSTALL_DIR/venv"
 CHIP_SRC_DIR="/opt/connectedhomeip"
-MATTER_PORT="8443"
+MATTER_PORT="8443"            # HTTPS/SSL 端口
+MATTER_HTTP_PORT="5580"       # WebSocket 明文端口，供 Home Assistant 使用
 
 TERMUX_VAR_DIR="/data/data/com.termux/files/usr/var"
 SERVICE_CONTROL_DIR="$TERMUX_VAR_DIR/service/$SERVICE_ID"
@@ -128,6 +129,7 @@ mqtt:
 matter:
   listen_ip: '0.0.0.0'
   port: $MATTER_PORT
+  http_port: $MATTER_HTTP_PORT
   ssl:
     certfile: '$MATTER_DATA_DIR/certificate.pem'
     keyfile: '$MATTER_DATA_DIR/privatekey.pem'
