@@ -182,6 +182,19 @@ if [[ "$IS_JSON_MODE" -eq 0 && "$IS_QUIET_MODE" -eq 0 ]]; then
             EXIT_CODE=2
         fi
     fi
+    
+    # 在普通模式下也进行基本的MQTT上报
+    BASIC_JSON=$(jq -n \
+        --arg service "$SERVICE_ID" \
+        --arg status "$STATUS" \
+        --arg pid "$PID" \
+        --arg http_status "$HTTP_STATUS" \
+        --arg port "$SERVICE_PORT" \
+        --argjson timestamp "$TS" \
+        '{service: $service, status: $status, pid: $pid, http_status: $http_status, port: ($port|tonumber), timestamp: $timestamp}' 2>/dev/null
+    )
+    mqtt_report "isg/status/$SERVICE_ID/status" "$BASIC_JSON"
+    
 else
     # 完整检查模式（JSON模式或有STATUS_MODE环境变量时）
     if [[ "$STATUS_MODE" != "2" ]]; then
@@ -211,7 +224,7 @@ else
     fi
 fi
 
-# 构建JSON结果（仅在需要时）
+# 构建JSON结果（仅在JSON模式时输出详细信息）
 if [[ "$IS_JSON_MODE" -eq 1 ]]; then
     RESULT_JSON=$(jq -n \
         --arg service "$SERVICE_ID" \
