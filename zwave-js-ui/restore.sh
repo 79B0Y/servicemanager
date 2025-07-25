@@ -445,7 +445,8 @@ while [[ $# -gt 0 ]]; do
     case $1 in
         --config|-c)
             FORCE_CONFIG_MODE=true
-            log "强制配置模式: 将直接生成默认配置"
+            # 先不使用log，等目录创建后再记录
+            echo "[$(date '+%F %T')] 强制配置模式: 将直接生成默认配置"
             shift
             ;;
         --help|-h)
@@ -460,10 +461,15 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# 初始化
-log "🚀 执行还原流程"
+# 初始化 - 先创建目录，再开始记录日志
 START_TIME=$(date +%s)
 ensure_directories
+
+# 现在可以安全使用log函数了
+log "🚀 执行还原流程"
+if [ "$FORCE_CONFIG_MODE" = true ]; then
+    log "强制配置模式: 将直接生成默认配置"
+fi
 load_mqtt_conf
 mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"started\",\"message\":\"restore process initiated\",\"timestamp\":$START_TIME}"
 
