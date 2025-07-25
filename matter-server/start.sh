@@ -56,8 +56,19 @@ get_matter_pid() {
     local port_pid=$(netstat -tnlp 2>/dev/null | grep ":$MATTER_PORT " | awk '{print $7}' | cut -d'/' -f1 | head -n1)
     
     if [ -n "$port_pid" ] && [ "$port_pid" != "-" ]; then
-        local cmdline=$(cat /proc/$port_pid/cmdline 2>/dev/null | grep -o 'matter-server\|python.*matter' || true)
-        if [ -n "$cmdline" ]; then
+        # 验证是否为 matter-server 相关进程（检查命令行、工作目录或可执行文件）
+        local cmdline=$(cat /proc/$port_pid/cmdline 2>/dev/null | tr '\0' ' ' | grep -i 'matter\|python.*matter' || true)
+        local cwd=$(ls -l /proc/$port_pid/cwd 2>/dev/null | grep -o 'matter\|opt.*matter' || true)
+        local exe=$(ls -l /proc/$port_pid/exe 2>/dev/null | grep -o 'python\|matter' || true)
+        
+        # 如果找到任何一个匹配条件就认为是 matter-server 进程
+        if [ -n "$cmdline" ] || [ -n "$cwd" ] || [ -n "$exe" ]; then
+            echo "$port_pid"
+            return 0
+        fi
+        
+        # 如果上述检查都失败，但端口确实被占用，可能是通过不同方式启动的
+        if netstat -tnlp 2>/dev/null | grep ":$MATTER_PORT " | grep -q "$port_pid"; then
             echo "$port_pid"
             return 0
         fi
