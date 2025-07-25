@@ -72,9 +72,47 @@ INTERVAL="${INTERVAL:-5}"
 # 设置脚本特定的日志文件
 LOG_FILE="$LOG_FILE_RESTORE"
 
+# 初始化检查 - 确保基本路径存在
+if [ ! -d "$BASE_DIR" ]; then
+    echo "错误: 基础目录不存在: $BASE_DIR"
+    exit 1
+fi
+
+if [ ! -d "$SERVICE_DIR" ]; then
+    echo "错误: 服务目录不存在: $SERVICE_DIR"
+    echo "请确保Zigbee2MQTT服务已正确安装"
+    exit 1
+fi
+
 # -----------------------------------------------------------------------------
 # 辅助函数定义
 # -----------------------------------------------------------------------------
+
+# 显示使用帮助
+show_usage() {
+    cat << EOF
+用法: bash restore.sh [选项]
+
+选项:
+  --config, -c    强制生成默认配置模式，跳过备份文件检查
+  --help, -h      显示此帮助信息
+
+环境变量:
+  RESTORE_FILE    指定要还原的备份文件路径
+
+示例:
+  bash restore.sh                      # 自动选择最新备份或生成默认配置
+  bash restore.sh --config             # 强制生成默认配置
+  bash restore.sh -c                   # 同上，短参数形式
+  RESTORE_FILE=/path/backup.tar.gz bash restore.sh  # 使用指定备份文件
+
+说明:
+  - 默认模式会优先查找最新的备份文件进行还原
+  - 如果没有找到备份文件，则自动生成默认配置
+  - --config 模式会强制跳过备份文件检查，直接生成新的默认配置
+  - 支持 .tar.gz 和 .zip 格式的备份文件
+EOF
+}
 
 # 确保目录存在
 ensure_directories() {
@@ -149,6 +187,9 @@ check_service_status() {
 START_TIME=$(date +%s)
 CUSTOM_BACKUP_FILE="${RESTORE_FILE:-}"
 
+# 先确保必要目录存在（在解析参数前）
+ensure_directories
+
 # 解析命令行参数
 FORCE_CONFIG_MODE=false
 
@@ -171,9 +212,6 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
-
-# 确保必要目录存在
-ensure_directories
 
 # 确保数据目录存在
 proot-distro login "$PROOT_DISTRO" -- bash -c "mkdir -p $Z2M_DATA_DIR"
