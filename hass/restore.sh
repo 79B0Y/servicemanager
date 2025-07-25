@@ -127,34 +127,15 @@ default_config:
 frontend:
   themes: !include_dir_merge_named themes
 
-# Text to speech
-tts:
-  - platform: google_translate
-
 automation: !include automations.yaml
 script: !include scripts.yaml
 scene: !include scenes.yaml
+config_editor:
+logger:
+  default: critical
 
-# HTTP configuration
 http:
   use_x_frame_options: false
-
-# Logger configuration
-logger:
-  default: warning
-  logs:
-    homeassistant.core: info
-
-# Homeassistant configuration
-homeassistant:
-  name: Home
-  latitude: 39.9042
-  longitude: 116.4074
-  elevation: 43
-  unit_system: metric
-  time_zone: Asia/Shanghai
-  currency: CNY
-  country: CN
 EOF"
 
     # 创建 secrets.yaml 文件
