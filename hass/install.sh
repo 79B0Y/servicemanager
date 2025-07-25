@@ -268,42 +268,22 @@ log_step() {
 
 log_step "Generating minimal configuration as fallback"
 cat > $HA_CONFIG_DIR/configuration.yaml << 'CONFIG_EOF'
-# Minimal Home Assistant Configuration
-# Generated automatically during installation
-
-# Loads default set of integrations
+# Loads default set of integrations. Do not remove.
 default_config:
 
-# Enable frontend
+# Load frontend themes from the themes folder
 frontend:
+  themes: !include_dir_merge_named themes
 
-# Text to speech
-tts:
-  - platform: google_translate
-
-# Enable automations, scripts, scenes
 automation: !include automations.yaml
 script: !include scripts.yaml
 scene: !include scenes.yaml
+config_editor:
+logger:
+  default: critical
 
-# HTTP configuration
 http:
   use_x_frame_options: false
-
-# Logger configuration
-logger:
-  default: warning
-
-# Homeassistant configuration
-homeassistant:
-  name: Home
-  latitude: 39.9042
-  longitude: 116.4074
-  elevation: 43
-  unit_system: metric
-  time_zone: Asia/Shanghai
-  currency: CNY
-  country: CN
 CONFIG_EOF
 
 # Create empty automation files
