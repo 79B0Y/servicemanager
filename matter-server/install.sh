@@ -65,7 +65,8 @@ mqtt_report() {
 }
 
 ensure_dirs() {
-    mkdir -p "$SERVICE_DIR" "$LOG_DIR" "$MATTER_INSTALL_DIR" "$MATTER_DATA_DIR" "$SERVICE_CONTROL_DIR" "$TEMP_DIR"
+    mkdir -p "$SERVICE_DIR" "$LOG_DIR" "$SERVICE_CONTROL_DIR" "$TEMP_DIR"
+    proot-distro login ubuntu -- bash -c "mkdir -p $MATTER_INSTALL_DIR $MATTER_DATA_DIR"
 }
 
 # ------------------- 主流程 -------------------
