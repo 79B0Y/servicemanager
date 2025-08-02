@@ -30,7 +30,7 @@ DOWN_FILE="$SERVICE_CONTROL_DIR/down"
 LOG_DIR="$SERVICE_DIR/logs"
 LOG_FILE="$LOG_DIR/install.log"
 
-DEPS=(build-essential libssl-dev libffi-dev python3-dev git cmake ninja-build jq curl openssl)
+DEPS=(build-essential libssl-dev libffi-dev python3-dev git cmake ninja-build jq curl openssl gn)
 
 # ------------------- 函数定义 -------------------
 log() {
@@ -92,9 +92,16 @@ mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"messa
 proot-distro login ubuntu -- bash -c "
     cd /opt
     rm -rf connectedhomeip
-    git clone --recursive https://github.com/project-chip/connectedhomeip.git
+    git clone --depth=1 https://github.com/project-chip/connectedhomeip.git
     cd connectedhomeip
-    git checkout v2023-09-28
+    echo "📥 初始化必要子模块..."
+    git submodule update --init \
+      third_party/nlassert/repo \
+      third_party/jsoncpp/repo \
+      third_party/pigweed/repo \
+      third_party/mbedtls/repo \
+      third_party/openthread/repo \
+      third_party/ot-br-posix/repo
     source $MATTER_VENV_DIR/bin/activate
     pip install --upgrade pip
     gn gen out/python --args='is_debug=false is_component_build=false python_bindings=true'
