@@ -20,6 +20,8 @@ MATTER_VENV_DIR="$MATTER_INSTALL_DIR/venv"
 CHIP_SRC_DIR="/opt/connectedhomeip"
 MATTER_PORT="8443"            # HTTPS/SSL 端口
 MATTER_HTTP_PORT="5580"       # WebSocket 明文端口，供 Home Assistant 使用
+TERMUX_TMP_DIR="/data/data/com.termux/files/usr/tmp"
+TEMP_DIR="$TERMUX_TMP_DIR/${SERVICE_ID}_temp"
 
 TERMUX_VAR_DIR="/data/data/com.termux/files/usr/var"
 SERVICE_CONTROL_DIR="$TERMUX_VAR_DIR/service/$SERVICE_ID"
@@ -28,7 +30,7 @@ DOWN_FILE="$SERVICE_CONTROL_DIR/down"
 LOG_DIR="$SERVICE_DIR/logs"
 LOG_FILE="$LOG_DIR/install.log"
 
-DEPS=(python3 python3.13-venv python3-pip build-essential libssl-dev libffi-dev python3-dev git cmake ninja-build jq curl openssl)
+DEPS=(build-essential libssl-dev libffi-dev python3-dev git cmake ninja-build jq curl openssl)
 
 # ------------------- 函数定义 -------------------
 log() {
@@ -63,7 +65,7 @@ mqtt_report() {
 }
 
 ensure_dirs() {
-    mkdir -p "$SERVICE_DIR" "$LOG_DIR" "$MATTER_INSTALL_DIR" "$MATTER_DATA_DIR" "$SERVICE_CONTROL_DIR"
+    mkdir -p "$SERVICE_DIR" "$LOG_DIR" "$MATTER_INSTALL_DIR" "$MATTER_DATA_DIR" "$SERVICE_CONTROL_DIR" "$TEMP_DIR"
 }
 
 # ------------------- 主流程 -------------------
@@ -81,7 +83,7 @@ proot-distro login ubuntu -- bash -c "
     rm -rf venv
     python3.13 -m venv venv
     source venv/bin/activate
-    pip install --upgrade pip wheel setuptools
+    pip install --upgrade pip wheel setuptools cryptography
 "
 
 log "下载并编译 connectedhomeip 源码（CHIP）..."
@@ -97,6 +99,7 @@ proot-distro login ubuntu -- bash -c "
     gn gen out/python --args='is_debug=false is_component_build=false python_bindings=true'
     ninja -C out/python
     pip install ./out/python/python_dist/chip_python-*.whl
+    python -c "import chip; print(chip.__version__)"
 "
 
 log "安装 python-matter-server..."
@@ -105,6 +108,10 @@ proot-distro login ubuntu -- bash -c "
     cd $MATTER_INSTALL_DIR
     source venv/bin/activate
     pip install python-matter-server
+    git clone https://github.com/your-repo/python-matter-server.git 
+    cd python-matter-server 
+    pip install -e .
+    pip show python-matter-server
 "
 
 log "生成自签名证书..."
@@ -120,7 +127,7 @@ log "写入配置文件 config.yaml..."
 mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"creating config file\",\"timestamp\":$(date +%s)}"
 load_mqtt_conf
 
-cat > /tmp/config.yaml <<EOF
+cat > $TEMP_DIR/config.yaml <<EOF
 mqtt:
   broker: 'mqtt://$MQTT_HOST:$MQTT_PORT'
   username: '$MQTT_USER'
