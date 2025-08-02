@@ -100,7 +100,7 @@ proot-distro login ubuntu -- bash -c "
     gn gen out/python --args='is_debug=false is_component_build=false python_bindings=true'
     ninja -C out/python
     pip install ./out/python/python_dist/chip_python-*.whl
-    python -c "import chip; print(chip.__version__)"
+    python -c 'import chip; print(chip.__version__)'
 "
 
 log "安装 python-matter-server..."
