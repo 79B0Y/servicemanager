@@ -30,7 +30,7 @@ DOWN_FILE="$SERVICE_CONTROL_DIR/down"
 LOG_DIR="$SERVICE_DIR/logs"
 LOG_FILE="$LOG_DIR/install.log"
 
-DEPS=(build-essential libssl-dev libffi-dev python3-dev git cmake ninja-build jq curl openssl gn)
+DEPS=(build-essential libssl-dev libffi-dev python3-pip python3-venv python3-dev libglib2.0-dev libglib2.0-dev-bin libglib2.0-bin git cmake ninja-build jq curl openssl gn clang)
 
 # ------------------- 函数定义 -------------------
 log() {
@@ -92,22 +92,33 @@ mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"messa
 proot-distro login ubuntu -- bash -c "
     cd /opt
     rm -rf connectedhomeip
-    git clone --depth=1 https://github.com/project-chip/connectedhomeip.git
-    cd connectedhomeip
-    echo "📥 初始化必要子模块..."
-    git submodule update --init \
-      third_party/nlassert/repo \
-      third_party/jsoncpp/repo \
+    git clone https://github.com/project-chip/connectedhomeip.git ~/connectedhomeip
+    cd ~/connectedhomeip
+    chmod +x ./scripts/bootstrap.sh
+    ./scripts/bootstrap.sh
+    source scripts/activate.sh
+    ./scripts/build/build_examples.py --target linux --app server
+    git submodule update --init --recursive --depth 1 --filter=blob:none \
+      third_party/nlassert \
+      third_party/nlio \
+      third_party/nlfaultinjection \
       third_party/pigweed/repo \
-      third_party/mbedtls/repo \
-      third_party/openthread/repo \
-      third_party/ot-br-posix/repo
+      third_party/open-iot-sdk/sdk \
+      third_party/mbedtls/repo
+    git submodule update --init \
+      third_party/jsoncpp \
+      third_party/lwip \
+      third_party/perfetto \
+      third_party/libwebsockets \
+      third_party/editline \
+    source scripts/activate.sh
+    gn gen out/python --args='chip_build_python_bindings=true chip_enable_shared_object=true chip_use_clusters_for_ip_commissioning=true'
+    gn gen out/python --args='chip_enable_shared_object=true chip_use_clusters_for_ip_commissioning=true'
+    
     source $MATTER_VENV_DIR/bin/activate
-    pip install --upgrade pip
-    gn gen out/python --args='is_debug=false is_component_build=false python_bindings=true'
     ninja -C out/python
-    pip install ./out/python/python_dist/chip_python-*.whl
-    python -c 'import chip; print(chip.__version__)'
+    cd out/python
+    python3 -m pip install .
 "
 
 log "安装 python-matter-server..."
@@ -116,11 +127,12 @@ proot-distro login ubuntu -- bash -c "
     cd $MATTER_INSTALL_DIR
     source venv/bin/activate
     pip install python-matter-server
-    git clone https://github.com/your-repo/python-matter-server.git 
+    git clone https://github.com/home-assistant-libs/python-matter-server.git
     cd python-matter-server 
     pip install -e .
     pip show python-matter-server
 "
+
 
 log "生成自签名证书..."
 mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"generating certificates\",\"timestamp\":$(date +%s)}"
