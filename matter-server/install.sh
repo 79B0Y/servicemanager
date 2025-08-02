@@ -143,7 +143,7 @@ matter:
     keyfile: '$MATTER_DATA_DIR/privatekey.pem'
 EOF
 
-proot-distro login ubuntu -- bash -c "cp /tmp/config.yaml $MATTER_DATA_DIR/config.yaml"
+proot-distro login ubuntu -- bash -c "cp $TEMP_DIR/config.yaml $MATTER_DATA_DIR/config.yaml"
 
 log "注册 Termux 服务监控文件..."
 cat > "$RUN_FILE" <<EOF
