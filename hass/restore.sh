@@ -1,9 +1,14 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
-# Home Assistant 还原脚本 - 优化版本
-# 版本: v1.5.0
+# Home Assistant 还原脚本 - 增强版本
+# 版本: v1.6.0 - 增加强制配置模式
 # 功能: 智能还原备份文件或生成默认配置
-# 优化: 1. 移除"HA运行+存在备份"的跳过逻辑 2. 不依赖common_paths.sh
+# 
+# 用法:
+#   bash restore.sh              # 自动选择备份文件或生成默认配置
+#   bash restore.sh --config     # 强制生成默认配置，跳过备份文件检查
+#   bash restore.sh -c           # 同上，短参数形式
+#   RESTORE_FILE=xxx bash restore.sh  # 使用指定的备份文件
 # =============================================================================
 
 set -euo pipefail
@@ -31,6 +36,7 @@ BACKUP_DIR="${BACKUP_DIR:-/sdcard/isgbackup/$SERVICE_ID}"
 KEEP_BACKUPS="${KEEP_BACKUPS:-3}"
 INSTALL_HISTORY_FILE="$BACKUP_DIR/.install_history"
 UPDATE_HISTORY_FILE="$BACKUP_DIR/.update_history"
+DEFAULT_CONFIG_FILE="$BACKUP_DIR/configuration_default.yaml"
 
 # 容器相关
 PROOT_DISTRO="${PROOT_DISTRO:-ubuntu}"
@@ -45,6 +51,32 @@ INTERVAL="${INTERVAL:-5}"
 # =============================================================================
 # 独立工具函数
 # =============================================================================
+
+# 显示使用帮助
+show_usage() {
+    cat << EOF
+用法: bash restore.sh [选项]
+
+选项:
+  --config, -c    强制生成默认配置模式，跳过备份文件检查
+  --help, -h      显示此帮助信息
+
+环境变量:
+  RESTORE_FILE    指定要还原的备份文件路径
+
+示例:
+  bash restore.sh                      # 自动选择最新备份或生成默认配置
+  bash restore.sh --config             # 强制生成默认配置
+  bash restore.sh -c                   # 同上，短参数形式
+  RESTORE_FILE=/path/backup.tar.gz bash restore.sh  # 使用指定备份文件
+
+说明:
+  - 默认模式会优先查找最新的备份文件进行还原
+  - 如果没有找到备份文件，则自动生成默认配置
+  - --config 模式会强制跳过备份文件检查，直接生成新的默认配置
+  - 支持 .tar.gz 和 .zip 格式的备份文件
+EOF
+}
 
 # 确保目录存在
 ensure_directories() {
@@ -113,13 +145,14 @@ create_backup_before_restore() {
 
 # 生成默认配置文件
 generate_default_config() {
-    log "generating default Home Assistant configuration"
+    log "开始生成默认Home Assistant配置文件"
     
     # 确保配置目录存在
     proot-distro login "$PROOT_DISTRO" -- mkdir -p "$HA_CONFIG_DIR"
     
     # 生成基础配置文件
-    proot-distro login "$PROOT_DISTRO" -- bash -c "cat > $HA_CONFIG_DIR/configuration.yaml << 'EOF'
+    log "生成主配置文件: configuration.yaml"
+    cat > "$DEFAULT_CONFIG_FILE" << 'EOF'
 # Loads default set of integrations. Do not remove.
 default_config:
 
@@ -130,15 +163,38 @@ frontend:
 automation: !include automations.yaml
 script: !include scripts.yaml
 scene: !include scenes.yaml
+
+# Configuration panel
 config_editor:
+
+# Logger settings
 logger:
   default: critical
 
+# HTTP settings
 http:
   use_x_frame_options: false
-EOF"
+
+# Location settings
+homeassistant:
+  latitude: 39.9042
+  longitude: 116.4074
+  elevation: 43
+  unit_system: metric
+  time_zone: Asia/Shanghai
+  name: Home Assistant
+  country: CN
+EOF
+
+    # 复制配置文件到容器内
+    log "将配置文件复制到容器内: $HA_CONFIG_DIR/configuration.yaml"
+    if ! proot-distro login "$PROOT_DISTRO" -- bash -c "cp '$DEFAULT_CONFIG_FILE' '$HA_CONFIG_DIR/configuration.yaml'"; then
+        log "错误: 无法将配置文件复制到容器内"
+        return 1
+    fi
 
     # 创建 secrets.yaml 文件
+    log "生成 secrets.yaml 文件"
     proot-distro login "$PROOT_DISTRO" -- bash -c "cat > $HA_CONFIG_DIR/secrets.yaml << 'EOF'
 # Use this file to store secrets like usernames and passwords.
 # Learn more at https://www.home-assistant.io/docs/configuration/secrets/
@@ -149,13 +205,15 @@ time_zone: Asia/Shanghai
 EOF"
 
     # 创建空的自动化文件
+    log "生成自动化相关配置文件"
     proot-distro login "$PROOT_DISTRO" -- bash -c "
         echo '[]' > $HA_CONFIG_DIR/automations.yaml
         echo '{}' > $HA_CONFIG_DIR/scripts.yaml
         echo '[]' > $HA_CONFIG_DIR/scenes.yaml
     "
 
-    log "default configuration generated successfully"
+    log "默认配置生成成功"
+    return 0
 }
 
 # 执行还原操作
@@ -303,8 +361,31 @@ perform_restore() {
 START_TIME=$(date +%s)
 CUSTOM_BACKUP_FILE="${RESTORE_FILE:-}"
 
-# 初始化
+# 先确保必要目录存在（在解析参数前）
 ensure_directories
+
+# 解析命令行参数
+FORCE_CONFIG_MODE=false
+
+# 处理命令行参数
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --config|-c)
+            FORCE_CONFIG_MODE=true
+            log "强制配置模式: 将直接生成默认配置"
+            shift
+            ;;
+        --help|-h)
+            show_usage
+            exit 0
+            ;;
+        *)
+            echo "错误: 未知参数 '$1'"
+            echo "使用 --help 查看帮助信息"
+            exit 1
+            ;;
+    esac
+done
 
 log "starting Home Assistant restore process"
 
@@ -315,7 +396,7 @@ log "current Home Assistant status: $HA_STATUS"
 # =============================================================================
 # 场景1: 用户指定了备份文件
 # =============================================================================
-if [ -n "$CUSTOM_BACKUP_FILE" ]; then
+if [ -n "$CUSTOM_BACKUP_FILE" ] && [ "$FORCE_CONFIG_MODE" = false ]; then
     log "scenario: user specified backup file"
     
     if [ -f "$CUSTOM_BACKUP_FILE" ]; then
@@ -343,7 +424,74 @@ if [ -n "$CUSTOM_BACKUP_FILE" ]; then
 fi
 
 # =============================================================================
-# 场景2: 自动查找备份文件进行还原
+# 场景2: 强制配置模式或无备份文件的默认配置生成
+# =============================================================================
+if [ "$FORCE_CONFIG_MODE" = true ] || { [ -z "$CUSTOM_BACKUP_FILE" ] && [ $(ls -1 "$BACKUP_DIR"/homeassistant_backup_*.tar.gz 2>/dev/null | wc -l) -eq 0 ] && [ ! -f "$BACKUP_DIR/homeassistant_original.tar.gz" ]; }; then
+    
+    if [ "$FORCE_CONFIG_MODE" = true ]; then
+        log "强制配置模式: 开始生成默认配置流程"
+        mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"restoring\",\"method\":\"forced_default_config\",\"timestamp\":$(date +%s)}"
+    else
+        log "未找到备份文件，开始生成默认配置流程"
+        mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"restoring\",\"method\":\"default_config\",\"timestamp\":$(date +%s)}"
+    fi
+    
+    # 如果HA正在运行，停止服务
+    if [ "$HA_STATUS" = "running" ]; then
+        log "停止Home Assistant服务"
+        bash "$SERVICE_DIR/stop.sh"
+        sleep 5
+    fi
+    
+    # 生成默认配置
+    if ! generate_default_config; then
+        log "错误: 生成默认配置失败"
+        mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"failed to generate default configuration\",\"timestamp\":$(date +%s)}"
+        exit 1
+    fi
+    
+    # 启动服务验证配置
+    log "启动服务以验证新配置"
+    if ! bash "$SERVICE_DIR/start.sh"; then
+        log "警告: 启动脚本返回非零状态，但继续检查服务状态"
+    fi
+    
+    # 等待并验证服务状态
+    WAITED=0
+    log "等待Home Assistant使用新配置启动 (最长等待${MAX_WAIT}秒)"
+    
+    while [ "$WAITED" -lt "$MAX_WAIT" ]; do
+        if bash "$SERVICE_DIR/status.sh" --quiet; then
+            log "服务在等待 ${WAITED}秒 后使用新配置成功启动"
+            break
+        fi
+        sleep "$INTERVAL"
+        WAITED=$((WAITED + INTERVAL))
+        log "等待中... ${WAITED}/${MAX_WAIT}秒"
+    done
+    
+    # 最终状态验证和上报
+    if bash "$SERVICE_DIR/status.sh" --quiet; then
+        END_TIME=$(date +%s)
+        DURATION=$((END_TIME - START_TIME))
+        if [ "$FORCE_CONFIG_MODE" = true ]; then
+            mqtt_report "isg/restore/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"success\",\"method\":\"forced_default_config\",\"duration\":$DURATION,\"startup_time\":$WAITED,\"timestamp\":$END_TIME}"
+            log "强制配置模式完成，服务成功启动 (总耗时: ${DURATION}秒, 启动时间: ${WAITED}秒)"
+        else
+            mqtt_report "isg/restore/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"success\",\"method\":\"default_config\",\"duration\":$DURATION,\"startup_time\":$WAITED,\"timestamp\":$END_TIME}"
+            log "默认配置生成完成，服务成功启动 (总耗时: ${DURATION}秒, 启动时间: ${WAITED}秒)"
+        fi
+    else
+        log "错误: 服务在 ${MAX_WAIT}秒 后仍未能使用新配置启动"
+        mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"service failed to start after config generation\",\"method\":\"$METHOD\",\"max_wait\":$MAX_WAIT,\"timestamp\":$(date +%s)}"
+        exit 1
+    fi
+    
+    exit 0
+fi
+
+# =============================================================================
+# 场景3: 自动查找备份文件进行还原
 # =============================================================================
 log "scenario: automatic backup search and restore"
 
@@ -381,10 +529,10 @@ else
 fi
 
 # =============================================================================
-# 场景3: 生成默认配置
+# 场景4: 最终兜底 - 生成默认配置
 # =============================================================================
-log "scenario: no backup files available, generating default configuration"
-mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"restoring\",\"method\":\"default_config\",\"timestamp\":$(date +%s)}"
+log "scenario: fallback to default configuration generation"
+mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"restoring\",\"method\":\"fallback_default_config\",\"timestamp\":$(date +%s)}"
 
 # 生成默认配置
 generate_default_config
@@ -410,11 +558,11 @@ done
 if bash "$SERVICE_DIR/status.sh" --quiet; then
     END_TIME=$(date +%s)
     DURATION=$((END_TIME - START_TIME))
-    mqtt_report "isg/restore/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"success\",\"method\":\"default_config\",\"duration\":$DURATION,\"startup_time\":$WAITED,\"timestamp\":$END_TIME}"
-    log "default configuration generated and service started successfully in ${DURATION}s (startup: ${WAITED}s)"
+    mqtt_report "isg/restore/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"success\",\"method\":\"fallback_default_config\",\"duration\":$DURATION,\"startup_time\":$WAITED,\"timestamp\":$END_TIME}"
+    log "fallback default configuration generated and service started successfully in ${DURATION}s (startup: ${WAITED}s)"
 else
     log "service failed to start with new configuration after ${MAX_WAIT}s"
-    mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"service failed to start after config generation\",\"method\":\"default_config\",\"timestamp\":$(date +%s)}"
+    mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"service failed to start after config generation\",\"method\":\"fallback_default_config\",\"timestamp\":$(date +%s)}"
     exit 1
 fi
 
