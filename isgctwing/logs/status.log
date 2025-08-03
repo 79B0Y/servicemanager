@@ -1,0 +1,1140 @@
+[2025-08-03 04:40:43] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192443
+}
+[2025-08-03 04:41:09] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192469
+}
+[2025-08-03 04:41:34] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192494
+}
+[2025-08-03 04:41:59] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192519
+}
+[2025-08-03 04:42:24] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192544
+}
+[2025-08-03 04:42:50] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192569
+}
+[2025-08-03 04:43:14] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192594
+}
+[2025-08-03 04:43:40] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192619
+}
+[2025-08-03 04:44:04] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192644
+}
+[2025-08-03 04:44:30] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192669
+}
+[2025-08-03 04:44:55] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192694
+}
+[2025-08-03 04:45:20] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192719
+}
+[2025-08-03 04:45:44] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192744
+}
+[2025-08-03 04:46:10] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192769
+}
+[2025-08-03 04:46:35] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192794
+}
+[2025-08-03 04:47:00] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192819
+}
+[2025-08-03 04:47:25] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192845
+}
+[2025-08-03 04:47:51] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192871
+}
+[2025-08-03 04:48:16] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192896
+}
+[2025-08-03 04:48:39] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192919
+}
+[2025-08-03 04:49:05] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192944
+}
+[2025-08-03 04:49:31] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192970
+}
+[2025-08-03 04:49:55] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192995
+}
+[2025-08-03 04:50:20] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193019
+}
+[2025-08-03 04:50:45] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193044
+}
+[2025-08-03 04:51:10] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193069
+}
+[2025-08-03 04:51:35] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193094
+}
+[2025-08-03 04:52:00] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193120
+}
+[2025-08-03 04:52:25] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193144
+}
+[2025-08-03 04:52:50] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193169
+}
+[2025-08-03 04:53:15] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193195
+}
+[2025-08-03 04:53:40] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193219
+}
+[2025-08-03 04:54:05] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193245
+}
+[2025-08-03 04:54:30] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193269
+}
+[2025-08-03 04:54:55] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193294
+}
+[2025-08-03 04:55:20] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193320
+}
+[2025-08-03 04:55:45] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193344
+}
+[2025-08-03 04:56:10] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193369
+}
+[2025-08-03 04:56:35] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193394
+}
+[2025-08-03 04:57:00] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193419
+}
+[2025-08-03 04:57:25] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193444
+}
+[2025-08-03 04:57:50] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193470
+}
+[2025-08-03 04:58:15] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193494
+}
+[2025-08-03 04:58:40] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193519
+}
+[2025-08-03 04:59:05] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193545
+}
+[2025-08-03 04:59:30] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193569
+}
+[2025-08-03 04:59:55] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193594
+}
+[2025-08-03 05:00:22] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193621
+}
+[2025-08-03 05:00:45] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193645
+}
+[2025-08-03 05:01:10] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193669
+}
+[2025-08-03 05:01:35] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193695
+}
+[2025-08-03 05:02:00] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193720
+}
+[2025-08-03 05:02:25] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193744
+}
+[2025-08-03 05:02:50] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193769
+}
+[2025-08-03 05:03:16] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193795
+}
+[2025-08-03 05:03:40] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193820
+}
+[2025-08-03 05:04:05] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193844
+}
+[2025-08-03 05:04:30] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193869
+}
+[2025-08-03 05:04:55] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193895
+}
+[2025-08-03 05:05:20] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193920
+}
+[2025-08-03 05:05:45] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193945
+}
+[2025-08-03 05:06:10] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193970
+}
+[2025-08-03 05:06:35] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193995
+}
+[2025-08-03 05:07:00] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194020
+}
+[2025-08-03 05:07:25] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194044
+}
+[2025-08-03 05:07:50] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194070
+}
+[2025-08-03 05:08:15] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194094
+}
+[2025-08-03 05:08:40] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194120
+}
+[2025-08-03 05:09:05] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194145
+}
+[2025-08-03 05:09:30] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194170
+}
+[2025-08-03 05:09:55] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194195
+}
+[2025-08-03 05:10:20] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194220
+}
+[2025-08-03 05:10:45] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194245
+}
+[2025-08-03 05:11:10] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194270
+}
+[2025-08-03 05:11:35] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194295
+}
+[2025-08-03 05:12:00] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194320
+}
+[2025-08-03 05:12:25] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194345
+}
+[2025-08-03 05:12:50] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194370
+}
+[2025-08-03 05:13:15] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194395
+}
+[2025-08-03 05:13:40] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194420
+}
+[2025-08-03 05:14:06] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194445
+}
+[2025-08-03 05:14:31] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194470
+}
+[2025-08-03 05:14:55] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194495
+}
+[2025-08-03 05:15:21] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194520
+}
+[2025-08-03 05:15:45] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194545
+}
+[2025-08-03 05:16:10] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194570
+}
+[2025-08-03 05:16:36] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194595
+}
+[2025-08-03 05:17:01] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194620
+}
+[2025-08-03 05:17:25] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194645
+}
+[2025-08-03 05:17:50] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194670
+}
+[2025-08-03 05:18:15] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194695
+}
+[2025-08-03 05:18:41] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194720
+}
+[2025-08-03 05:19:05] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194745
+}
+[2025-08-03 05:19:30] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194770
+}
+[2025-08-03 05:19:56] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194795
+}
+[2025-08-03 05:20:20] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194820
+}
+[2025-08-03 05:20:45] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194845
+}
+[2025-08-03 05:21:10] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194870
+}
+[2025-08-03 05:21:36] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194895
+}
+[2025-08-03 05:22:01] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194920
+}
+[2025-08-03 05:22:26] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194945
+}
+[2025-08-03 05:22:51] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194970
+}
+[2025-08-03 05:23:15] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194995
+}
+[2025-08-03 05:23:41] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754195020
+}
+[2025-08-03 05:24:06] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754195045
+}
+[2025-08-03 05:24:31] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754195070
+}
+[2025-08-03 05:24:56] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754195095
+}
+[2025-08-03 05:25:21] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754195120
+}
+[2025-08-03 05:25:46] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754195145
+}
+[2025-08-03 05:26:11] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754195170
+}
+[2025-08-03 05:26:36] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754195195
+}
+[2025-08-03 05:27:01] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754195220
+}
+[2025-08-03 05:27:26] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754195245
+}
+[2025-08-03 05:27:51] [MQTT] isg/status/isgctwing/status -> {
+  "service": "isgctwing",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754195270
+}
