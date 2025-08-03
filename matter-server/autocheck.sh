@@ -1,8 +1,8 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
-# Matter Server 自检脚本 - 独立优化版本
-# 版本: v1.1.0
-# 优化: 参照 hass autocheck.sh，不依赖外部文件，快速检查
+# Matter Server 自检脚本 - 修复版本
+# 版本: v1.2.0
+# 修复: 简化配置提取、统一端口、临时目录使用
 # =============================================================================
 
 set -euo pipefail
@@ -13,6 +13,7 @@ set -euo pipefail
 SERVICE_ID="matter-server"
 BASE_DIR="/data/data/com.termux/files/home/servicemanager"
 SERVICE_DIR="$BASE_DIR/$SERVICE_ID"
+TERMUX_TMP_DIR="/data/data/com.termux/files/usr/tmp"
 
 # 配置文件
 CONFIG_FILE="$BASE_DIR/configuration.yaml"
@@ -25,7 +26,7 @@ PROOT_ROOTFS="/data/data/com.termux/files/usr/var/lib/proot-distro/installed-roo
 MATTER_INSTALL_DIR="$PROOT_ROOTFS/opt/matter-server"
 MATTER_VENV_DIR="$PROOT_ROOTFS/opt/matter-server/venv"
 MATTER_DATA_DIR="$PROOT_ROOTFS/opt/matter-server/data"
-MATTER_CONFIG_FILE="$PROOT_ROOTFS/opt/matter-server/data/config.yaml"
+MATTER_CONFIG_FILE="$PROOT_ROOTFS/opt/matter-server/config.yaml"  # 修复: 配置文件在根目录
 MATTER_STORAGE_FILE="$PROOT_ROOTFS/opt/matter-server/data/matter.json"
 
 # 日志和状态文件
@@ -41,7 +42,7 @@ BACKUP_DIR="${BACKUP_DIR:-/sdcard/isgbackup/$SERVICE_ID}"
 INSTALL_HISTORY_FILE="$BACKUP_DIR/.install_history"
 UPDATE_HISTORY_FILE="$BACKUP_DIR/.update_history"
 
-# 网络和服务参数
+# 网络和服务参数 - 修复: 统一端口
 MATTER_PORT="5580"
 MAX_TRIES="${MAX_TRIES:-3}"
 RETRY_INTERVAL="${RETRY_INTERVAL:-60}"
@@ -143,8 +144,16 @@ get_current_version_fast() {
         fi
     fi
     
-    # 方法1: 通过 proot 调用获取版本
-    local proot_version=$(proot-distro login "$PROOT_DISTRO" -- bash -c "source /opt/matter-server/venv/bin/activate && pip show python-matter-server | grep ^Version: | awk '{print \$2}'" 2>/dev/null || echo "unknown")
+    # 使用标准版本获取方法
+    local proot_version=$(proot-distro login "$PROOT_DISTRO" -- bash -c '
+        if [ -f "/opt/matter-server/venv/bin/activate" ]; then
+            source "/opt/matter-server/venv/bin/activate"
+            pip show python-matter-server 2>/dev/null | awk -F": " "/^Version/ {print \$2}" || echo "unknown"
+        else
+            echo "unknown"
+        fi
+    ' 2>/dev/null || echo "unknown")
+    
     if [[ -n "$proot_version" && "$proot_version" != "unknown" ]]; then
         # 缓存版本到文件
         echo "$proot_version" > "$VERSION_CACHE_FILE" 2>/dev/null || true
@@ -359,29 +368,28 @@ generate_status_message() {
     esac
 }
 
-# 快速获取配置信息
+# 修复: 简化配置信息获取，只提取要求的字段
 get_config_info_fast() {
     if [[ ! -f "$MATTER_CONFIG_FILE" ]]; then
         echo '{"error": "Config file not found"}'
         return
     fi
     
-    # 直接从文件系统读取配置，避免 proot 调用
-    local port=$(grep 'listen_port:' "$MATTER_CONFIG_FILE" 2>/dev/null | sed -E 's/.*listen_port: *([0-9]+).*/\1/' || echo "5580")
-    local host=$(grep 'listen_host:' "$MATTER_CONFIG_FILE" 2>/dev/null | sed -E 's/.*listen_host: *['"'"'"](.*)['"'"'"]/\1/' || echo "0.0.0.0")
-    local log_level=$(grep 'log_level:' "$MATTER_CONFIG_FILE" 2>/dev/null | sed -E 's/.*log_level: *['"'"'"](.*)['"'"'"]/\1/' || echo "INFO")
-    local mqtt_count=$(grep -A5 'mqtt:' "$MATTER_CONFIG_FILE" 2>/dev/null | grep 'broker_url:' | grep -v '#' | wc -l)
+    # 只提取 mqtt 配置和 matter 的 listen_ip、port
+    local listen_ip=$(grep -A5 'matter:' "$MATTER_CONFIG_FILE" 2>/dev/null | grep 'listen_ip:' | sed -E 's/.*listen_ip: *['"'"'"](.*)['"'"'"]/\1/' || echo "0.0.0.0")
+    local port=$(grep -A5 'matter:' "$MATTER_CONFIG_FILE" 2>/dev/null | grep 'port:' | sed -E 's/.*port: *([0-9]+).*/\1/' || echo "5580")
     
-    local mqtt_enabled="false"
-    [[ $mqtt_count -gt 0 ]] && mqtt_enabled="true"
+    # MQTT 配置信息
+    local mqtt_broker=$(grep -A5 'mqtt:' "$MATTER_CONFIG_FILE" 2>/dev/null | grep 'broker:' | sed -E 's/.*broker: *['"'"'"](.*)['"'"'"]/\1/' || echo "")
+    local mqtt_username=$(grep -A5 'mqtt:' "$MATTER_CONFIG_FILE" 2>/dev/null | grep 'username:' | sed -E 's/.*username: *['"'"'"](.*)['"'"'"]/\1/' || echo "")
     
-    # 输出 JSON
+    # 输出简化的 JSON
     cat << EOF
 {
+  "listen_ip": "$listen_ip",
   "port": "$port",
-  "host": "$host",
-  "log_level": "$log_level",
-  "mqtt_enabled": $mqtt_enabled
+  "mqtt_broker": "$mqtt_broker",
+  "mqtt_username": "$mqtt_username"
 }
 EOF
 }
