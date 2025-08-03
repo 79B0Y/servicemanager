@@ -1,8 +1,8 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
-# Matter Bridge 卸载脚本
-# 版本: v1.0.0
-# 功能: 完全卸载 Matter Bridge 环境和配置
+# Matter Bridge 卸载脚本 - 更新版本
+# 版本: v1.1.0
+# 功能: 完全卸载 Matter Bridge 环境和配置 (pnpm 版本)
 # =============================================================================
 
 set -euo pipefail
@@ -25,6 +25,11 @@ INSTALL_HISTORY_FILE="$BACKUP_DIR/.install_history"
 DISABLED_FLAG="$SERVICE_DIR/.disabled"
 
 PROOT_DISTRO="${PROOT_DISTRO:-ubuntu}"
+# 修复: 使用新的路径规范
+BRIDGE_SCRIPT_DIR="/sdcard/isgbackup/matter-bridge"
+BRIDGE_START_SCRIPT="$BRIDGE_SCRIPT_DIR/matter-bridge-start.sh"
+BRIDGE_PNPM_DIR="/root/.pnpm-global"
+BRIDGE_CMD="/root/.pnpm-global/global/5/node_modules/.bin/home-assistant-matter-hub"
 BRIDGE_PORT="8482"
 
 # -----------------------------------------------------------------------------
@@ -93,8 +98,8 @@ record_uninstall_history() {
 # -----------------------------------------------------------------------------
 ensure_directories
 
-log "开始卸载 Matter Bridge"
-mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"uninstalling\",\"message\":\"starting uninstall process\",\"timestamp\":$(date +%s)}"
+log "开始卸载 Matter Bridge (pnpm 版本)"
+mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"uninstalling\",\"message\":\"starting uninstall process for pnpm version\",\"timestamp\":$(date +%s)}"
 
 # -----------------------------------------------------------------------------
 # 停止服务
@@ -143,7 +148,7 @@ fi
 # 在容器内执行卸载
 # -----------------------------------------------------------------------------
 log "移除 Matter Bridge 安装"
-mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"uninstalling\",\"message\":\"removing installation directory\",\"timestamp\":$(date +%s)}"
+mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"uninstalling\",\"message\":\"removing installation from proot container\",\"timestamp\":$(date +%s)}"
 
 proot-distro login "$PROOT_DISTRO" << 'EOF'
 log_step() {
@@ -165,18 +170,30 @@ else
     echo "[INFO] 端口 8482 上未发现进程"
 fi
 
-log_step "卸载 home-assistant-matter-hub"
-if command -v npm >/dev/null 2>&1; then
-    npm uninstall -g home-assistant-matter-hub || echo "[WARN] npm 卸载失败或包不存在"
+log_step "使用 pnpm 卸载 home-assistant-matter-hub"
+if command -v pnpm >/dev/null 2>&1; then
+    pnpm remove -g home-assistant-matter-hub || echo "[WARN] pnpm 卸载失败或包不存在"
 else
-    echo "[WARN] npm 命令不存在"
+    echo "[WARN] pnpm 命令不存在"
 fi
 
-log_step "移除启动脚本"
-rm -f /usr/lib/node_modules/home-assistant-matter-hub/matter-bridge-start.sh
+log_step "清理 pnpm 全局目录"
+rm -rf /root/.pnpm-global/global/5/node_modules/home-assistant-matter-hub || echo "[INFO] 包目录不存在"
+rm -f /root/.pnpm-global/global/5/node_modules/.bin/home-assistant-matter-hub || echo "[INFO] 可执行文件不存在"
+
+log_step "清理启动脚本目录"
+rm -rf /sdcard/isgbackup/matter-bridge || echo "[INFO] 启动脚本目录不存在"
 
 log_step "清理数据目录"
-rm -rf /root/.matter_server
+rm -rf /root/.matter_server || echo "[INFO] 数据目录不存在"
+
+log_step "清理 pnpm 缓存和存储（可选）"
+if command -v pnpm >/dev/null 2>&1; then
+    pnpm store prune || echo "[INFO] pnpm store prune 失败"
+    # 可选：完全移除 pnpm 全局环境
+    # rm -rf /root/.pnpm-global
+    # rm -rf /root/.pnpm-store
+fi
 
 log_step "卸载完成"
 EOF
@@ -207,12 +224,28 @@ record_uninstall_history "SUCCESS"
 log "验证卸载状态"
 
 # 检查程序是否还存在
-if proot-distro login "$PROOT_DISTRO" -- command -v home-assistant-matter-hub >/dev/null 2>&1; then
-    log "警告: home-assistant-matter-hub 命令仍然存在"
+if proot-distro login "$PROOT_DISTRO" -- test -f "$BRIDGE_CMD" 2>/dev/null; then
+    log "警告: home-assistant-matter-hub 可执行文件仍然存在"
     UNINSTALL_STATUS="partial"
 else
-    log "✅ home-assistant-matter-hub 已移除"
+    log "✅ home-assistant-matter-hub 可执行文件已移除"
     UNINSTALL_STATUS="complete"
+fi
+
+# 检查包文件是否还存在
+if proot-distro login "$PROOT_DISTRO" -- test -f "/root/.pnpm-global/global/5/node_modules/home-assistant-matter-hub/package.json" 2>/dev/null; then
+    log "警告: home-assistant-matter-hub 包文件仍然存在"
+    UNINSTALL_STATUS="partial"
+else
+    log "✅ home-assistant-matter-hub 包文件已移除"
+fi
+
+# 检查启动脚本是否还存在
+if proot-distro login "$PROOT_DISTRO" -- test -f "$BRIDGE_START_SCRIPT" 2>/dev/null; then
+    log "警告: 启动脚本仍然存在"
+    UNINSTALL_STATUS="partial"
+else
+    log "✅ 启动脚本已移除"
 fi
 
 # 检查进程是否还在运行
@@ -224,38 +257,4 @@ else
 fi
 
 # 检查端口是否还在监听
-if netstat -tulnp 2>/dev/null | grep ":$BRIDGE_PORT " > /dev/null; then
-    log "警告: 端口 $BRIDGE_PORT 仍被占用"
-    UNINSTALL_STATUS="partial"
-else
-    log "✅ 端口 $BRIDGE_PORT 已释放"
-fi
-
-# 检查数据目录是否还存在
-if proot-distro login "$PROOT_DISTRO" -- test -d "/root/.matter_server" 2>/dev/null; then
-    log "警告: 数据目录仍然存在"
-    UNINSTALL_STATUS="partial"
-else
-    log "✅ 数据目录已清理"
-fi
-
-# -----------------------------------------------------------------------------
-# 上报卸载完成
-# -----------------------------------------------------------------------------
-if [ "$UNINSTALL_STATUS" = "complete" ]; then
-    log "Matter Bridge 完全卸载成功"
-    mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"uninstalled\",\"message\":\"matter-bridge completely removed\",\"timestamp\":$(date +%s)}"
-else
-    log "Matter Bridge 部分卸载，可能需要手动清理"
-    mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"uninstalled\",\"message\":\"matter-bridge partially removed, manual cleanup may be required\",\"timestamp\":$(date +%s)}"
-fi
-
-log "卸载摘要:"
-log "  - 状态: $UNINSTALL_STATUS"
-log "  - 程序命令: $(proot-distro login "$PROOT_DISTRO" -- command -v home-assistant-matter-hub >/dev/null 2>&1 && echo "未完成" || echo "已完成")"
-log "  - 进程停止: $(get_bridge_pid >/dev/null 2>&1 && echo "未完成" || echo "已完成")"
-log "  - 端口释放: $(netstat -tulnp 2>/dev/null | grep ":$BRIDGE_PORT " >/dev/null && echo "未完成" || echo "已完成")"
-log "  - 数据目录: $(proot-distro login "$PROOT_DISTRO" -- test -d "/root/.matter_server" 2>/dev/null && echo "未完成" || echo "已完成")"
-log "  - 服务监控: 已清理"
-
-exit 0
+if netstat -tuln
