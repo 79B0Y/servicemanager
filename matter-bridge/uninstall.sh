@@ -21,7 +21,7 @@ SERVICE_CONTROL_DIR="$TERMUX_VAR_DIR/service/$SERVICE_ID"
 LOG_DIR="$SERVICE_DIR/logs"
 LOG_FILE="$LOG_DIR/uninstall.log"
 BACKUP_DIR="/sdcard/isgbackup/$SERVICE_ID"
-INSTALL_HISTORY_FILE="$BACKUP_DIR/.install_history"
+INSTALL_HISTORY_FILE="$SERVICE_DIR/.install_history"  # 修复: 使用服务目录下的历史文件
 DISABLED_FLAG="$SERVICE_DIR/.disabled"
 
 PROOT_DISTRO="${PROOT_DISTRO:-ubuntu}"
@@ -38,7 +38,14 @@ BRIDGE_PORT="8482"
 ensure_directories() {
     mkdir -p "$LOG_DIR"
     mkdir -p "$BACKUP_DIR"
-    touch "$INSTALL_HISTORY_FILE" 2>/dev/null || true
+    # 确保安装历史文件存在
+    if [ ! -f "$INSTALL_HISTORY_FILE" ]; then
+        touch "$INSTALL_HISTORY_FILE" 2>/dev/null || true
+    fi
+    # 如果备份目录下有历史文件，也尝试创建
+    if [ ! -f "$BACKUP_DIR/.install_history" ]; then
+        touch "$BACKUP_DIR/.install_history" 2>/dev/null || true
+    fi
 }
 
 log() {
@@ -90,7 +97,14 @@ mqtt_report() {
 record_uninstall_history() {
     local status="$1"
     local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    echo "$timestamp UNINSTALL $status" >> "$INSTALL_HISTORY_FILE"
+    
+    # 尝试写入服务目录下的历史文件
+    echo "$timestamp UNINSTALL $status" >> "$INSTALL_HISTORY_FILE" 2>/dev/null || true
+    
+    # 同时尝试写入备份目录下的历史文件（如果存在）
+    if [ -d "$BACKUP_DIR" ]; then
+        echo "$timestamp UNINSTALL $status" >> "$BACKUP_DIR/.install_history" 2>/dev/null || true
+    fi
 }
 
 # -----------------------------------------------------------------------------
@@ -172,14 +186,44 @@ fi
 
 log_step "使用 pnpm 卸载 home-assistant-matter-hub"
 if command -v pnpm >/dev/null 2>&1; then
-    pnpm remove -g home-assistant-matter-hub || echo "[WARN] pnpm 卸载失败或包不存在"
+    # 方法1: 尝试标准卸载
+    if pnpm remove -g home-assistant-matter-hub 2>/dev/null; then
+        echo "[INFO] pnpm 标准卸载成功"
+    else
+        echo "[WARN] pnpm 标准卸载失败，尝试其他方法"
+        
+        # 方法2: 尝试从不同的全局目录卸载
+        for global_dir in "/root/.pnpm-global" "/root/.local/share/pnpm/global" "/root/.local/share/pnpm"; do
+            if [ -d "$global_dir" ]; then
+                echo "[INFO] 尝试从 $global_dir 卸载"
+                cd "$global_dir" 2>/dev/null && pnpm remove home-assistant-matter-hub 2>/dev/null && echo "[INFO] 从 $global_dir 卸载成功" && break
+            fi
+        done
+        
+        # 方法3: 手动清理全局包
+        echo "[INFO] 手动清理全局包"
+        rm -rf /root/.pnpm-global/global/*/node_modules/home-assistant-matter-hub 2>/dev/null || true
+        rm -rf /root/.local/share/pnpm/global/*/node_modules/home-assistant-matter-hub 2>/dev/null || true
+    fi
 else
     echo "[WARN] pnpm 命令不存在"
 fi
 
 log_step "清理 pnpm 全局目录"
-rm -rf /root/.pnpm-global/global/5/node_modules/home-assistant-matter-hub || echo "[INFO] 包目录不存在"
-rm -f /root/.pnpm-global/global/5/node_modules/.bin/home-assistant-matter-hub || echo "[INFO] 可执行文件不存在"
+# 清理所有可能的 pnpm 全局目录位置
+for pnpm_dir in "/root/.pnpm-global" "/root/.local/share/pnpm"; do
+    if [ -d "$pnpm_dir" ]; then
+        echo "[INFO] 清理 $pnpm_dir 下的 home-assistant-matter-hub"
+        find "$pnpm_dir" -name "home-assistant-matter-hub" -type d -exec rm -rf {} + 2>/dev/null || true
+        find "$pnpm_dir" -name "*matter-hub*" -type f -delete 2>/dev/null || true
+    fi
+done
+
+# 具体清理已知路径
+rm -rf /root/.pnpm-global/global/5/node_modules/home-assistant-matter-hub 2>/dev/null || true
+rm -f /root/.pnpm-global/global/5/node_modules/.bin/home-assistant-matter-hub 2>/dev/null || true
+rm -rf /root/.local/share/pnpm/global/5/node_modules/home-assistant-matter-hub 2>/dev/null || true
+rm -f /root/.local/share/pnpm/global/5/node_modules/.bin/home-assistant-matter-hub 2>/dev/null || true
 
 log_step "清理启动脚本目录"
 rm -rf /sdcard/isgbackup/matter-bridge || echo "[INFO] 启动脚本目录不存在"
@@ -189,10 +233,23 @@ rm -rf /root/.matter_server || echo "[INFO] 数据目录不存在"
 
 log_step "清理 pnpm 缓存和存储（可选）"
 if command -v pnpm >/dev/null 2>&1; then
-    pnpm store prune || echo "[INFO] pnpm store prune 失败"
-    # 可选：完全移除 pnpm 全局环境
+    # 清理 pnpm 存储
+    pnpm store prune 2>/dev/null || echo "[INFO] pnpm store prune 失败"
+    
+    # 清理 pnpm 缓存
+    pnpm cache delete 2>/dev/null || echo "[INFO] pnpm cache delete 失败"
+    
+    echo "[INFO] 查找并清理残留的 pnpm 目录"
+    # 显示 pnpm 配置信息用于调试
+    pnpm config get store-dir 2>/dev/null || echo "[INFO] 无法获取 pnpm store-dir"
+    pnpm config get global-dir 2>/dev/null || echo "[INFO] 无法获取 pnpm global-dir"
+    
+    # 可选：完全移除 pnpm 全局环境（注释掉，保留 pnpm 本身）
     # rm -rf /root/.pnpm-global
     # rm -rf /root/.pnpm-store
+    # rm -rf /root/.local/share/pnpm
+else
+    echo "[INFO] pnpm 命令不存在，跳过缓存清理"
 fi
 
 log_step "卸载完成"
@@ -257,4 +314,40 @@ else
 fi
 
 # 检查端口是否还在监听
-if netstat -tuln
+if netstat -tulnp 2>/dev/null | grep ":$BRIDGE_PORT " > /dev/null; then
+    log "警告: 端口 $BRIDGE_PORT 仍被占用"
+    UNINSTALL_STATUS="partial"
+else
+    log "✅ 端口 $BRIDGE_PORT 已释放"
+fi
+
+# 检查数据目录是否还存在
+if proot-distro login "$PROOT_DISTRO" -- test -d "/root/.matter_server" 2>/dev/null; then
+    log "警告: 数据目录仍然存在"
+    UNINSTALL_STATUS="partial"
+else
+    log "✅ 数据目录已清理"
+fi
+
+# -----------------------------------------------------------------------------
+# 上报卸载完成
+# -----------------------------------------------------------------------------
+if [ "$UNINSTALL_STATUS" = "complete" ]; then
+    log "Matter Bridge 完全卸载成功"
+    mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"uninstalled\",\"message\":\"matter-bridge completely removed (pnpm version)\",\"timestamp\":$(date +%s)}"
+else
+    log "Matter Bridge 部分卸载，可能需要手动清理"
+    mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"uninstalled\",\"message\":\"matter-bridge partially removed, manual cleanup may be required\",\"timestamp\":$(date +%s)}"
+fi
+
+log "卸载摘要:"
+log "  - 状态: $UNINSTALL_STATUS"
+log "  - 可执行文件: $(proot-distro login "$PROOT_DISTRO" -- test -f "$BRIDGE_CMD" 2>/dev/null && echo "未完成" || echo "已完成")"
+log "  - 包文件: $(proot-distro login "$PROOT_DISTRO" -- test -f "/root/.pnpm-global/global/5/node_modules/home-assistant-matter-hub/package.json" 2>/dev/null && echo "未完成" || echo "已完成")"
+log "  - 启动脚本: $(proot-distro login "$PROOT_DISTRO" -- test -f "$BRIDGE_START_SCRIPT" 2>/dev/null && echo "未完成" || echo "已完成")"
+log "  - 进程停止: $(get_bridge_pid >/dev/null 2>&1 && echo "未完成" || echo "已完成")"
+log "  - 端口释放: $(netstat -tulnp 2>/dev/null | grep ":$BRIDGE_PORT " >/dev/null && echo "未完成" || echo "已完成")"
+log "  - 数据目录: $(proot-distro login "$PROOT_DISTRO" -- test -d "/root/.matter_server" 2>/dev/null && echo "未完成" || echo "已完成")"
+log "  - 服务监控: 已清理"
+
+exit 0
