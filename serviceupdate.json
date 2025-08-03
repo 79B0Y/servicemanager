@@ -19,7 +19,7 @@
       "id": "matter-server",
       "display_name": "Matter  Server",
       "latest_script_version": "1.0.1",
-      "latest_service_version": "6.1.0",
+      "latest_service_version": "8.0.0",
       "latest_script_package_sha256": "3cf9e08",
       "latest_script_package_url": "https://euhome.linklinkiot.com/appfront/vt/staticfile/download?checksum=e0ffaaca371fb8bf8eeab46020c1fc55&fileid=49eb53f894164fff9e0ed12a4d35a6f6&mimetype=application%2Fgzip&name=matter-server-3cf9e08.tar.gz",
       "updatetime": 1753954535,
@@ -29,7 +29,7 @@
         "matter_port": "8443",
         "storage_path": "/opt/matter-server/storage",
         "ssl_enabled": true,
-        "ws_port": "5540",
+        "ws_port": "5580",
         "log_level": "INFO"
       },
       "upgrade_dependencies": [
