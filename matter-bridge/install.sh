@@ -113,21 +113,21 @@ mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"messa
 
 if [ ! -f "$SERVICEUPDATE_FILE" ]; then
     log "serviceupdate.json 未找到，使用默认依赖"
-    DEPENDENCIES='["nodejs","npm","python3","python3-pip","curl","wget","unzip","git"]'
+    DEPENDENCIES='["python3","python3-pip","curl","wget","unzip","git"]'
 else
-    DEPENDENCIES=$(jq -c ".services[] | select(.id==\"$SERVICE_ID\") | .install_dependencies // [\"nodejs\",\"npm\",\"python3\",\"python3-pip\",\"curl\",\"wget\",\"unzip\",\"git\"]" "$SERVICEUPDATE_FILE" 2>/dev/null || echo '["nodejs","npm","python3","python3-pip","curl","wget","unzip","git"]')
+    DEPENDENCIES=$(jq -c ".services[] | select(.id==\"$SERVICE_ID\") | .install_dependencies // [\"python3\",\"python3-pip\",\"curl\",\"wget\",\"unzip\",\"git\"]" "$SERVICEUPDATE_FILE" 2>/dev/null || echo '["nodejs","npm","python3","python3-pip","curl","wget","unzip","git"]')
 fi
 
 # 转换为 bash 数组
 if [ "$DEPENDENCIES" != "null" ] && [ -n "$DEPENDENCIES" ]; then
     readarray -t DEPS_ARRAY < <(echo "$DEPENDENCIES" | jq -r '.[]' 2>/dev/null)
 else
-    DEPS_ARRAY=("nodejs" "npm" "python3" "python3-pip" "curl" "wget" "unzip" "git")
+    DEPS_ARRAY=("python3" "python3-pip" "curl" "wget" "unzip" "git")
 fi
 
 # 确保数组不为空
 if [ ${#DEPS_ARRAY[@]} -eq 0 ]; then
-    DEPS_ARRAY=("nodejs" "npm" "python3" "python3-pip" "curl" "wget" "unzip" "git")
+    DEPS_ARRAY=("python3" "python3-pip" "curl" "wget" "unzip" "git")
 fi
 
 log "安装必需依赖: ${DEPS_ARRAY[*]}"
