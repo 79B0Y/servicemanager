@@ -1,0 +1,10 @@
+[2025-08-03 04:17:03] [MQTT] isg/status/isgtrigger/status -> {
+  "service": "isgtrigger",
+  "status": "running",
+  "pid": "8201",
+  "runtime": "00:07",
+  "port_status": "listening",
+  "install": true,
+  "version": "2.2.1-3-g88e159e-88e159e",
+  "timestamp": 1754191022
+}
