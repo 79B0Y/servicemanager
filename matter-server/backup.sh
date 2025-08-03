@@ -1,8 +1,9 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
-# Matter Server 备份脚本
-# 版本: v1.0.0
+# Matter Server 备份脚本 - 修复版本
+# 版本: v1.2.0
 # 功能: 备份 Matter Server 数据和配置
+# 修复: 按基础要求备份 /root/.matter_server/ 目录
 # =============================================================================
 
 set -euo pipefail
@@ -13,6 +14,7 @@ set -euo pipefail
 SERVICE_ID="matter-server"
 BASE_DIR="/data/data/com.termux/files/home/servicemanager"
 SERVICE_DIR="$BASE_DIR/$SERVICE_ID"
+TERMUX_TMP_DIR="/data/data/com.termux/files/usr/tmp"
 
 CONFIG_FILE="$BASE_DIR/configuration.yaml"
 
@@ -22,9 +24,9 @@ BACKUP_DIR="/sdcard/isgbackup/$SERVICE_ID"
 KEEP_BACKUPS=3
 
 PROOT_DISTRO="${PROOT_DISTRO:-ubuntu}"
-MATTER_DATA_DIR="/opt/matter-server/data"
-MATTER_CONFIG_FILE="/opt/matter-server/data/config.yaml"
-MATTER_STORAGE_FILE="/opt/matter-server/data/matter.json"
+# 修复: 按基础要求使用 /root/.matter_server/ 目录
+MATTER_DATA_DIR="/root/.matter_server"
+MATTER_VENV_DIR="/opt/matter-server/venv"
 MATTER_PORT="5580"
 
 # -----------------------------------------------------------------------------
@@ -64,6 +66,18 @@ get_matter_pid() {
         fi
     fi
     return 1
+}
+
+# 修复: 使用基础要求里的标准版本获取方法
+get_current_version() {
+    proot-distro login "$PROOT_DISTRO" -- bash -c '
+        if [ -f "'"$MATTER_VENV_DIR"'/bin/activate" ]; then
+            source "'"$MATTER_VENV_DIR"'/bin/activate"
+            pip show python-matter-server 2>/dev/null | awk -F": " "/^Version/ {print \$2}" || echo "unknown"
+        else
+            echo "unknown"
+        fi
+    ' 2>/dev/null || echo "unknown"
 }
 
 mqtt_report() {
@@ -111,7 +125,7 @@ log "收集备份内容"
 mqtt_report "isg/backup/$SERVICE_ID/status" "{\"status\":\"backuping\",\"message\":\"collecting backup content\",\"timestamp\":$(date +%s)}"
 
 # 使用 Termux 专用的临时目录
-TEMP_BACKUP_DIR="/data/data/com.termux/files/usr/tmp/matter-server_backup_$$"
+TEMP_BACKUP_DIR="$TERMUX_TMP_DIR/matter-server_backup_$$"
 mkdir -p "$TEMP_BACKUP_DIR"
 
 # 创建备份清单文件
@@ -120,16 +134,18 @@ echo "# Matter Server Backup Manifest" > "$BACKUP_MANIFEST"
 echo "# Created: $(date)" >> "$BACKUP_MANIFEST"
 echo "# Service: matter-server" >> "$BACKUP_MANIFEST"
 echo "# Port: $MATTER_PORT" >> "$BACKUP_MANIFEST"
+echo "# Data Source: $MATTER_DATA_DIR" >> "$BACKUP_MANIFEST"
 echo "" >> "$BACKUP_MANIFEST"
 
-# 备份 Matter Server 数据目录
+# 修复: 备份 /root/.matter_server/ 目录下所有数据
 if proot-distro login "$PROOT_DISTRO" -- test -d "$MATTER_DATA_DIR"; then
-    log "备份数据目录: $MATTER_DATA_DIR"
+    log "备份 Matter Server 数据目录: $MATTER_DATA_DIR"
     
-    # 从容器内复制数据到临时目录
+    # 从容器内复制整个 .matter_server 目录
     proot-distro login "$PROOT_DISTRO" -- bash -c "
         if [ -d '$MATTER_DATA_DIR' ]; then
-            tar -czf '$TEMP_BACKUP_DIR/matter-server-data.tar.gz' -C '$(dirname $MATTER_DATA_DIR)' '$(basename $MATTER_DATA_DIR)'
+            cd '$(dirname $MATTER_DATA_DIR)'
+            tar -czf '$TEMP_BACKUP_DIR/matter-server-data.tar.gz' '$(basename $MATTER_DATA_DIR)'
             echo 'matter-server-data.tar.gz' >> '$BACKUP_MANIFEST'
         fi
     "
@@ -137,23 +153,20 @@ if proot-distro login "$PROOT_DISTRO" -- test -d "$MATTER_DATA_DIR"; then
     # 统计数据目录大小
     DATA_SIZE=$(proot-distro login "$PROOT_DISTRO" -- bash -c "du -sh '$MATTER_DATA_DIR' 2>/dev/null | awk '{print \$1}'" || echo "unknown")
     echo "Data directory size: $DATA_SIZE" >> "$BACKUP_MANIFEST"
+    
+    # 列出备份内容
+    log "列出备份内容"
+    proot-distro login "$PROOT_DISTRO" -- bash -c "
+        echo '# Backup Contents:' >> '$BACKUP_MANIFEST'
+        if [ -d '$MATTER_DATA_DIR' ]; then
+            find '$MATTER_DATA_DIR' -type f 2>/dev/null | head -20 >> '$BACKUP_MANIFEST' || true
+            file_count=\$(find '$MATTER_DATA_DIR' -type f 2>/dev/null | wc -l)
+            echo \"# Total files: \$file_count\" >> '$BACKUP_MANIFEST'
+        fi
+    "
 else
-    log "警告: 数据目录不存在 $MATTER_DATA_DIR"
-    echo "# Warning: Data directory not found" >> "$BACKUP_MANIFEST"
-fi
-
-# 单独备份重要配置文件
-if proot-distro login "$PROOT_DISTRO" -- test -f "$MATTER_CONFIG_FILE"; then
-    log "备份配置文件: $MATTER_CONFIG_FILE"
-    proot-distro login "$PROOT_DISTRO" -- cp "$MATTER_CONFIG_FILE" "$TEMP_BACKUP_DIR/config.yaml"
-    echo "config.yaml" >> "$BACKUP_MANIFEST"
-fi
-
-# 单独备份存储文件
-if proot-distro login "$PROOT_DISTRO" -- test -f "$MATTER_STORAGE_FILE"; then
-    log "备份存储文件: $MATTER_STORAGE_FILE"
-    proot-distro login "$PROOT_DISTRO" -- cp "$MATTER_STORAGE_FILE" "$TEMP_BACKUP_DIR/matter.json"
-    echo "matter.json" >> "$BACKUP_MANIFEST"
+    log "警告: Matter Server 数据目录不存在 $MATTER_DATA_DIR"
+    echo "# Warning: Data directory not found: $MATTER_DATA_DIR" >> "$BACKUP_MANIFEST"
 fi
 
 # 收集运行状态信息
@@ -176,14 +189,14 @@ echo "Port status:" >> "$PROCESS_INFO"
 netstat -tulnp 2>/dev/null | grep ":$MATTER_PORT " >> "$PROCESS_INFO" || echo "Port not listening" >> "$PROCESS_INFO"
 echo "process_info.txt" >> "$BACKUP_MANIFEST"
 
-# 备份Matter设备信息（如果可用）
-log "备份 Matter 设备信息"
-DEVICES_INFO="$TEMP_BACKUP_DIR/devices_info.txt"
-echo "# Matter Devices Information" > "$DEVICES_INFO"
-echo "# Date: $(date)" >> "$DEVICES_INFO"
-# 这里可以添加获取Matter设备列表的逻辑
-echo "# Device list backup not implemented yet" >> "$DEVICES_INFO"
-echo "devices_info.txt" >> "$BACKUP_MANIFEST"
+# 收集 Matter Server 版本信息
+VERSION_INFO="$TEMP_BACKUP_DIR/version_info.txt"
+echo "# Matter Server Version Information" > "$VERSION_INFO"
+echo "# Date: $(date)" >> "$VERSION_INFO"
+CURRENT_VERSION=$(get_current_version)
+echo "Matter Server Version: $CURRENT_VERSION" >> "$VERSION_INFO"
+echo "Backup Script Version: 1.2.0" >> "$VERSION_INFO"
+echo "version_info.txt" >> "$BACKUP_MANIFEST"
 
 # -----------------------------------------------------------------------------
 # 创建最终压缩包
@@ -235,11 +248,10 @@ log "当前备份文件总数: $CURRENT_BACKUPS"
 # 备份内容摘要
 # -----------------------------------------------------------------------------
 log "备份内容摘要:"
-log "  - 数据目录: $(proot-distro login "$PROOT_DISTRO" -- test -d "$MATTER_DATA_DIR" && echo "已备份" || echo "不存在")"
-log "  - 配置文件: $(proot-distro login "$PROOT_DISTRO" -- test -f "$MATTER_CONFIG_FILE" && echo "已备份" || echo "不存在")"
-log "  - 存储文件: $(proot-distro login "$PROOT_DISTRO" -- test -f "$MATTER_STORAGE_FILE" && echo "已备份" || echo "不存在")"
+log "  - 数据目录: $(proot-distro login "$PROOT_DISTRO" -- test -d "$MATTER_DATA_DIR" && echo "已备份 ($MATTER_DATA_DIR)" || echo "不存在")"
 log "  - 运行状态: 已备份"
 log "  - 进程信息: 已备份"
+log "  - 版本信息: 已备份 ($CURRENT_VERSION)"
 log "  - 备份大小: $SIZE_KB KB"
 log "  - 备份位置: $DST"
 
