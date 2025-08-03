@@ -1,0 +1,10 @@
+[2025-08-03 04:40:44] [MQTT] isg/status/isgelecstat/status -> {
+  "service": "isgelecstat",
+  "status": "running",
+  "pid": "8171",
+  "runtime": "23:48",
+  "port_status": "listening",
+  "install": true,
+  "version": "1.1.1-1-g20623c4-20623c4",
+  "timestamp": 1754192444
+}
