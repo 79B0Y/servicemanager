@@ -39,8 +39,8 @@ MATTER_SDK_DIR="$MATTER_INSTALL_DIR/connectedhomeip"
 # Matter 特定配置
 MATTER_PORT="8443"
 WS_PORT="5540"
-MATTER_SDK_VERSION="${MATTER_SDK_VERSION:-v2023-09-28}"
-PYTHON_VERSION="${PYTHON_VERSION:-3.12.6}"
+MATTER_SDK_VERSION="${MATTER_SDK_VERSION:-v1.4.2.0}"
+PYTHON_VERSION="${PYTHON_VERSION:-3.13.3}"
 
 # 脚本参数
 MAX_WAIT="${MAX_WAIT:-300}"
@@ -84,7 +84,7 @@ mqtt_report() {
 get_current_version() {
     proot-distro login "$PROOT_DISTRO" -- bash -c "
         source $MATTER_ENV_DIR/bin/activate 2>/dev/null || exit 1
-        python -c 'import matter_server; print(matter_server.__version__)' 2>/dev/null || echo 'unknown'
+        pip3 show python-matter-server 2>/dev/null || echo 'unknown'
     " 2>/dev/null || echo "unknown"
 }
 
@@ -159,7 +159,8 @@ if ! proot-distro login "$PROOT_DISTRO" -- bash -c "
     cd $MATTER_INSTALL_DIR
     python3 -m venv venv
     source venv/bin/activate
-    pip install --upgrade pip setuptools wheel
+    python3 -m pip install --upgrade pip setuptools wheel
+
 "; then
     log "failed to create virtual environment"
     mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"virtual environment creation failed\",\"timestamp\":$(date +%s)}"
@@ -185,116 +186,6 @@ if ! proot-distro login "$PROOT_DISTRO" -- bash -c "
 fi
 
 # -----------------------------------------------------------------------------
-# 克隆和编译 ConnectedHomeIP (Matter SDK) - 优化版本
-# -----------------------------------------------------------------------------
-log "cloning ConnectedHomeIP (Matter SDK) with retry mechanism"
-mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"cloning ConnectedHomeIP SDK\",\"timestamp\":$(date +%s)}"
-
-# 设置较短的超时时间，并使用浅克隆
-if ! proot-distro login "$PROOT_DISTRO" -- bash -c "
-    cd $MATTER_INSTALL_DIR
-    
-    # 配置 git 以处理网络问题
-    git config --global http.postBuffer 524288000
-    git config --global http.lowSpeedLimit 1000
-    git config --global http.lowSpeedTime 300
-    
-    # 使用浅克隆减少下载量
-    git clone --depth 1 --single-branch --branch main https://github.com/project-chip/connectedhomeip.git
-    cd connectedhomeip
-    
-    # 尝试切换到指定版本，如果失败则使用 main 分支
-    if git fetch --depth 1 origin tag $MATTER_SDK_VERSION 2>/dev/null; then
-        git checkout $MATTER_SDK_VERSION
-        log 'switched to SDK version: $MATTER_SDK_VERSION'
-    else
-        log 'using main branch (SDK version tag not found)'
-    fi
-    
-    # 只初始化必要的子模块
-    git submodule update --init --depth 1 third_party/nanopb/repo || true
-    git submodule update --init --depth 1 third_party/nlassert/repo || true
-    git submodule update --init --depth 1 third_party/nlio/repo || true
-"; then
-    log "failed to clone ConnectedHomeIP"
-    mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"ConnectedHomeIP clone failed\",\"timestamp\":$(date +%s)}"
-    record_install_history "FAILED" "unknown"
-    exit 1
-fi
-
-log "building ConnectedHomeIP Python bindings (simplified)"
-mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"building ConnectedHomeIP Python bindings\",\"timestamp\":$(date +%s)}"
-
-if ! proot-distro login "$PROOT_DISTRO" -- bash -c "
-    cd $MATTER_INSTALL_DIR/connectedhomeip
-    source ../venv/bin/activate
-    
-    # 检查是否已安装 gn
-    if ! command -v gn >/dev/null 2>&1; then
-        # 安装 GN (Generate Ninja) - 使用预编译版本
-        log 'installing GN build tool'
-        wget -q https://chrome-infra-packages.appspot.com/dl/gn/gn/linux-arm64/+/latest -O gn.zip || {
-            # 备用方案：从 depot_tools 安装
-            git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git
-            export PATH=\$PWD/depot_tools:\$PATH
-        }
-        
-        if [ -f gn.zip ]; then
-            unzip -q gn.zip
-            chmod +x gn
-            sudo mv gn /usr/local/bin/ || mv gn ../venv/bin/
-        fi
-    fi
-    
-    # 设置环境变量
-    export PATH=\$PWD/depot_tools:\$PATH
-    
-    # 生成构建文件 - 简化配置
-    mkdir -p out/python
-    echo 'is_debug = false
-is_component_build = false
-chip_build_tests = false
-chip_build_tools = false
-chip_crypto = \"openssl\"
-chip_use_clusters_for_ip_commissioning = true' > out/python/args.gn
-    
-    # 使用 GN 生成构建文件
-    if command -v gn >/dev/null 2>&1; then
-        gn gen out/python || {
-            log 'gn gen failed, trying without args'
-            echo '' > out/python/args.gn
-            gn gen out/python
-        }
-    else
-        log 'gn not available, skipping native build'
-        exit 0
-    fi
-    
-    # 编译 - 只编译必要部分
-    ninja -C out/python chip-controller-py || {
-        log 'ninja build failed, trying alternative approach'
-        
-        # 备用方案：直接安装预编译的 Matter 包
-        pip install --no-deps chip-core || true
-        exit 0
-    }
-    
-    # 安装 Python 包
-    if [ -f out/python/python_dist/chip_python-*.whl ]; then
-        pip install ./out/python/python_dist/chip_python-*.whl
-    else
-        log 'no wheel found, installing alternative'
-        pip install --no-deps chip-core || true
-    fi
-"; then
-    log "SDK build failed, trying alternative installation"
-    mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"SDK build failed, using alternative method\",\"timestamp\":$(date +%s)}"
-    
-    # 备用方案：跳过 SDK 编译，直接安装 python-matter-server
-    log "proceeding without custom SDK build"
-fi
-
-# -----------------------------------------------------------------------------
 # 安装 python-matter-server
 # -----------------------------------------------------------------------------
 log "installing python-matter-server"
@@ -303,12 +194,7 @@ mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"messa
 if ! proot-distro login "$PROOT_DISTRO" -- bash -c "
     cd $MATTER_INSTALL_DIR
     source venv/bin/activate
-    
-    # 首先尝试安装最新版本
-    pip install python-matter-server[server] || {
-        log 'failed to install with [server] extras, trying basic version'
-        pip install python-matter-server
-    }
+    python -m pip install python-matter-server[server]
 "; then
     log "failed to install python-matter-server"
     mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"python-matter-server installation failed\",\"timestamp\":$(date +%s)}"
@@ -378,88 +264,13 @@ mkdir -p "$SERVICE_CONTROL_DIR"
 
 # 写入 run 启动脚本
 cat << 'EOF' > "$RUN_FILE"
-#!/data/data/com.termux/files/usr/bin/bash
-# =============================================================================
-# Matter Server Run 脚本 - isgservicemonitor 服务启动脚本
-# 版本: v1.0.0
-# 功能: 由 isgservicemonitor 调用，启动 Matter Server 守护进程
-# =============================================================================
-
-set -euo pipefail
-
-# 基础配置
-SERVICE_ID="matter-server"
-PROOT_DISTRO="${PROOT_DISTRO:-ubuntu}"
-MATTER_INSTALL_DIR="/opt/matter-server"
-MATTER_ENV_DIR="$MATTER_INSTALL_DIR/venv"
-MATTER_CONFIG_FILE="$MATTER_INSTALL_DIR/config.yaml"
-
-# 日志文件
-LOG_FILE="/data/data/com.termux/files/home/servicemanager/$SERVICE_ID/logs/run.log"
-mkdir -p "$(dirname "$LOG_FILE")"
-
-# 日志记录函数
-log_run() {
-    echo "[$(date '+%F %T')] $*" | tee -a "$LOG_FILE"
-}
-
-# 清理函数
-cleanup() {
-    log_run "Matter Server shutting down..."
-    exit 0
-}
-
-# 设置信号处理
-trap cleanup TERM INT
-
-log_run "Starting Matter Server daemon..."
-
-# 检查安装目录
-if ! proot-distro login "$PROOT_DISTRO" -- test -d "$MATTER_INSTALL_DIR"; then
-    log_run "ERROR: Matter Server installation directory not found: $MATTER_INSTALL_DIR"
-    exit 1
-fi
-
-# 检查虚拟环境
-if ! proot-distro login "$PROOT_DISTRO" -- test -d "$MATTER_ENV_DIR"; then
-    log_run "ERROR: Python virtual environment not found: $MATTER_ENV_DIR"
-    exit 1
-fi
-
-# 检查配置文件
-if ! proot-distro login "$PROOT_DISTRO" -- test -f "$MATTER_CONFIG_FILE"; then
-    log_run "ERROR: Configuration file not found: $MATTER_CONFIG_FILE"
-    exit 1
-fi
-
-# 检查 python-matter-server 安装
-log_run "Checking python-matter-server installation..."
-if ! proot-distro login "$PROOT_DISTRO" -- bash -c "
-    source $MATTER_ENV_DIR/bin/activate
-    python -c 'import matter_server; print(\"Matter Server version:\", matter_server.__version__)'
-" >> "$LOG_FILE" 2>&1; then
-    log_run "ERROR: python-matter-server not properly installed"
-    exit 1
-fi
-
-log_run "All prerequisites checked, starting Matter Server..."
-
-# 启动 Matter Server - 使用 exec 确保进程替换
+#!/data/data/com.termux/files/usr/bin/sh
+# 启动 Matter Server
 exec proot-distro login "$PROOT_DISTRO" -- bash -c "
     cd $MATTER_INSTALL_DIR
     source $MATTER_ENV_DIR/bin/activate
-    
-    # 输出版本信息
-    echo \"[INFO] Starting python-matter-server...\"
-    echo \"[INFO] Working directory: \$(pwd)\"
-    echo \"[INFO] Python version: \$(python --version)\"
-    echo \"[INFO] Matter server version: \$(python -c 'import matter_server; print(matter_server.__version__)' 2>/dev/null || echo 'unknown')\"
-    
-    # 启动 python-matter-server
-    exec python -m matter_server --config $MATTER_CONFIG_FILE
-" 2>&1
-
-log_run "Matter Server process ended unexpectedly"
+    exec matter_server
+    2>&1
 EOF
 
 # 赋予执行权限
