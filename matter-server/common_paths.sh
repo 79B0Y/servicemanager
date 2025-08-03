@@ -159,6 +159,71 @@ get_formatted_time() {
 }
 
 # =============================================================================
+# 函数：版本比较
+# =============================================================================
+# 版本比较函数：比较两个语义化版本号
+# 参数：$1=当前版本, $2=目标版本
+# 返回值：0=相等，1=第一个版本较新，2=第二个版本较新，3=无法比较
+compare_versions() {
+    local current="$1"
+    local target="$2"
+    
+    # 处理 unknown 版本
+    if [[ "$current" == "unknown" || "$target" == "unknown" ]]; then
+        echo 3
+        return
+    fi
+    
+    # 处理相同版本
+    if [[ "$current" == "$target" ]]; then
+        echo 0
+        return
+    fi
+    
+    # 提取版本号数字（去除非数字字符）
+    local current_clean=$(echo "$current" | sed 's/[^0-9.]//g')
+    local target_clean=$(echo "$target" | sed 's/[^0-9.]//g')
+    
+    # 如果清理后为空，无法比较
+    if [[ -z "$current_clean" || -z "$target_clean" ]]; then
+        echo 3
+        return
+    fi
+    
+    # 使用 sort -V 进行版本比较
+    local sorted=$(printf '%s\n%s\n' "$current_clean" "$target_clean" | sort -V)
+    local first_line=$(echo "$sorted" | head -n1)
+    
+    if [[ "$first_line" == "$current_clean" ]]; then
+        if [[ "$current_clean" == "$target_clean" ]]; then
+            echo 0  # 相等
+        else
+            echo 2  # target 版本较新
+        fi
+    else
+        echo 1  # current 版本较新
+    fi
+}
+
+# =============================================================================
+# 函数：标准版本获取
+# =============================================================================
+# 使用基础要求里的标准方法获取 Matter Server 版本
+get_matter_version() {
+    local proot_distro="${PROOT_DISTRO:-ubuntu}"
+    local venv_dir="${MATTER_VENV_DIR:-/opt/matter-server/venv}"
+    
+    proot-distro login "$proot_distro" -- bash -c '
+        if [ -f "'"$venv_dir"'/bin/activate" ]; then
+            source "'"$venv_dir"'/bin/activate"
+            pip show python-matter-server 2>/dev/null | awk -F": " "/^Version/ {print \$2}" || echo "unknown"
+        else
+            echo "unknown"
+        fi
+    ' 2>/dev/null || echo "unknown"
+}
+
+# =============================================================================
 # 版本信息
 # =============================================================================
 SCRIPT_VERSION="1.0.0"
