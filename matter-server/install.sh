@@ -84,7 +84,7 @@ mqtt_report() {
 get_current_version() {
     proot-distro login "$PROOT_DISTRO" -- bash -c "
         source $MATTER_ENV_DIR/bin/activate 2>/dev/null || exit 1
-        pip3 show python-matter-server 2>/dev/null || echo 'unknown'
+        pip show python-matter-server | grep ^Version: | awk '{print $2}' || echo 'unknown'
     " 2>/dev/null || echo "unknown"
 }
 
@@ -194,7 +194,7 @@ mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"messa
 if ! proot-distro login "$PROOT_DISTRO" -- bash -c "
     cd $MATTER_INSTALL_DIR
     source venv/bin/activate
-    python -m pip install python-matter-server[server]
+    python3 -m pip install python-matter-server[server]
 "; then
     log "failed to install python-matter-server"
     mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"python-matter-server installation failed\",\"timestamp\":$(date +%s)}"
