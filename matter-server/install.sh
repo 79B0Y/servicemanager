@@ -270,9 +270,9 @@ mkdir -p "$SERVICE_CONTROL_DIR"
 cat << 'EOF' > "$RUN_FILE"
 #!/data/data/com.termux/files/usr/bin/sh
 # 启动 Matter Server
-exec proot-distro login "$PROOT_DISTRO" -- bash -c '
-    cd "$MATTER_INSTALL_DIR"
-    source "$MATTER_ENV_DIR/bin/activate"
+exec proot-distro login ubuntu -- bash -c '
+    cd /opt/matter-server
+    source /opt/matter-server/venv/bin/activate
     matter-server
 '
 EOF
