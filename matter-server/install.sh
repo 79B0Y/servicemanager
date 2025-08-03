@@ -82,10 +82,14 @@ mqtt_report() {
 }
 
 get_current_version() {
-    proot-distro login "$PROOT_DISTRO" -- bash -c "
-        source $MATTER_ENV_DIR/bin/activate 2>/dev/null || exit 1
-        pip show python-matter-server | grep ^Version: | awk '{print $2}' || echo 'unknown'
-    " 2>/dev/null || echo "unknown"
+    proot-distro login "$PROOT_DISTRO" -- bash -c '
+        if [ -f "'"$MATTER_ENV_DIR"'/bin/activate" ]; then
+            source "'"$MATTER_ENV_DIR"'/bin/activate"
+            pip show python-matter-server 2>/dev/null | awk -F": " "/^Version/ {print \$2}" || echo "unknown"
+        else
+            echo "unknown"
+        fi
+    ' 2>/dev/null || echo "unknown"
 }
 
 record_install_history() {
