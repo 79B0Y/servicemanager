@@ -33,12 +33,12 @@ DOWN_FILE="$SERVICE_CONTROL_DIR/down"
 # 容器内路径
 MATTER_INSTALL_DIR="/opt/matter-server"
 MATTER_ENV_DIR="$MATTER_INSTALL_DIR/venv"
-MATTER_CONFIG_FILE="$MATTER_INSTALL_DIR/config.yaml"
-MATTER_SDK_DIR="$MATTER_INSTALL_DIR/connectedhomeip"
+MATTER_CONFIG_FILE="$MATTER_INSTALL_DIR/config.yaml"  # 修复: 移到根目录
+MATTER_DATA_DIR="/root/.matter_server"  # 修复: 按基础要求使用数据目录
 
 # Matter 特定配置
-MATTER_PORT="8443"
-WS_PORT="5580"
+MATTER_PORT="5580"  # 修复: 统一使用 5580 端口
+MATTER_LISTEN_IP="0.0.0.0"
 
 # 脚本参数
 MAX_WAIT="${MAX_WAIT:-300}"
