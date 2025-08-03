@@ -273,7 +273,7 @@ cat << 'EOF' > "$RUN_FILE"
 exec proot-distro login "$PROOT_DISTRO" -- bash -c '
     cd "$MATTER_INSTALL_DIR"
     source "$MATTER_ENV_DIR/bin/activate"
-    exec matter_server
+    exec matter-server
 '
 EOF
 
