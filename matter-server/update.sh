@@ -1,7 +1,10 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
-# Matter Server 升级脚本 (新版)
-# - 风格与 install/restore 完全统一
+# Matter Server 升级脚本 - 完整修复版本
+# 版本: v1.2.0
+# 功能: 
+# - 统一使用基础要求里的版本获取方法
+# - 新增版本比较逻辑，避免不必要的降级
 # - 升级前自动备份
 # - 日志中文/MQTT全英文
 # =============================================================================
@@ -31,9 +34,11 @@ START_TIME=$(date +%s)
 ensure_directories() {
     mkdir -p "$LOG_DIR" "$BACKUP_DIR"
 }
+
 log() {
     echo "[$(date '+%F %T')] $*" | tee -a "$LOG_FILE"
 }
+
 load_mqtt_conf() {
     if [ -f "$CONFIG_FILE" ]; then
         MQTT_HOST=$(grep -Po '^[[:space:]]*host:[[:space:]]*\K.*' "$CONFIG_FILE" | head -n1 || echo "127.0.0.1")
@@ -47,6 +52,7 @@ load_mqtt_conf() {
         MQTT_PASS="admin"
     fi
 }
+
 mqtt_report() {
     local topic="$1"
     local payload="$2"
@@ -58,15 +64,70 @@ mqtt_report() {
     mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT_CONFIG" -u "$MQTT_USER" -P "$MQTT_PASS" -t "$topic" -m "$payload" 2>/dev/null || true
     echo "[$(date '+%F %T')] [MQTT] $topic -> $payload" >> "$LOG_FILE"
 }
+
+# 修复: 使用基础要求里的标准版本获取方法
 get_current_version() {
-    proot-distro login "$PROOT_DISTRO" -- bash -c "source $MATTER_VENV_DIR/bin/activate && pip show python-matter-server | grep ^Version: | awk '{print \$2}'" 2>/dev/null || echo "unknown"
+    proot-distro login "$PROOT_DISTRO" -- bash -c '
+        if [ -f "'"$MATTER_VENV_DIR"'/bin/activate" ]; then
+            source "'"$MATTER_VENV_DIR"'/bin/activate"
+            pip show python-matter-server 2>/dev/null | awk -F": " "/^Version/ {print \$2}" || echo "unknown"
+        else
+            echo "unknown"
+        fi
+    ' 2>/dev/null || echo "unknown"
 }
+
 get_latest_version() {
     jq -r ".services[] | select(.id==\"$SERVICE_ID\") | .latest_service_version" "$SERVICEUPDATE_FILE" 2>/dev/null || echo "unknown"
 }
+
 get_upgrade_dependencies() {
     jq -c ".services[] | select(.id==\"$SERVICE_ID\") | .upgrade_dependencies" "$SERVICEUPDATE_FILE" 2>/dev/null || echo "[]"
 }
+
+# 版本比较函数：比较两个语义化版本号
+# 返回值：0=相等，1=第一个版本较新，2=第二个版本较新，3=无法比较
+compare_versions() {
+    local current="$1"
+    local target="$2"
+    
+    # 处理 unknown 版本
+    if [[ "$current" == "unknown" || "$target" == "unknown" ]]; then
+        echo 3
+        return
+    fi
+    
+    # 处理相同版本
+    if [[ "$current" == "$target" ]]; then
+        echo 0
+        return
+    fi
+    
+    # 提取版本号数字（去除非数字字符）
+    local current_clean=$(echo "$current" | sed 's/[^0-9.]//g')
+    local target_clean=$(echo "$target" | sed 's/[^0-9.]//g')
+    
+    # 如果清理后为空，无法比较
+    if [[ -z "$current_clean" || -z "$target_clean" ]]; then
+        echo 3
+        return
+    fi
+    
+    # 使用 sort -V 进行版本比较
+    local sorted=$(printf '%s\n%s\n' "$current_clean" "$target_clean" | sort -V)
+    local first_line=$(echo "$sorted" | head -n1)
+    
+    if [[ "$first_line" == "$current_clean" ]]; then
+        if [[ "$current_clean" == "$target_clean" ]]; then
+            echo 0  # 相等
+        else
+            echo 2  # target 版本较新
+        fi
+    else
+        echo 1  # current 版本较新
+    fi
+}
+
 record_update_history() {
     local status="$1"
     local old_version="$2"
@@ -110,6 +171,41 @@ if [ "$TARGET_VERSION" = "unknown" ]; then
 else
     log "目标版本: $TARGET_VERSION"
 fi
+
+# ------------------- 版本比较检查 -------------------
+log "检查版本比较: 当前版本 $CURRENT_VERSION vs 目标版本 $TARGET_VERSION"
+mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"updating\",\"current_version\":\"$CURRENT_VERSION\",\"target_version\":\"$TARGET_VERSION\",\"message\":\"comparing versions\",\"timestamp\":$(date +%s)}"
+
+VERSION_COMPARE=$(compare_versions "$CURRENT_VERSION" "$TARGET_VERSION")
+
+case $VERSION_COMPARE in
+    0)
+        log "当前版本与目标版本相同，无需升级"
+        END_TIME=$(date +%s)
+        DURATION=$((END_TIME - START_TIME))
+        record_update_history "SKIPPED" "$CURRENT_VERSION" "$TARGET_VERSION" "versions are identical"
+        mqtt_report "isg/update/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"skipped\",\"current_version\":\"$CURRENT_VERSION\",\"target_version\":\"$TARGET_VERSION\",\"reason\":\"versions are identical\",\"duration\":$DURATION,\"timestamp\":$END_TIME}"
+        log "✅ 升级跳过: 版本相同"
+        exit 0
+        ;;
+    1)
+        log "当前版本 ($CURRENT_VERSION) 比目标版本 ($TARGET_VERSION) 更新，跳过升级"
+        END_TIME=$(date +%s)
+        DURATION=$((END_TIME - START_TIME))
+        record_update_history "SKIPPED" "$CURRENT_VERSION" "$TARGET_VERSION" "current version is newer"
+        mqtt_report "isg/update/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"skipped\",\"current_version\":\"$CURRENT_VERSION\",\"target_version\":\"$TARGET_VERSION\",\"reason\":\"current version is newer\",\"duration\":$DURATION,\"timestamp\":$END_TIME}"
+        log "✅ 升级跳过: 当前版本更新"
+        exit 0
+        ;;
+    2)
+        log "目标版本 ($TARGET_VERSION) 比当前版本 ($CURRENT_VERSION) 更新，继续升级"
+        mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"updating\",\"current_version\":\"$CURRENT_VERSION\",\"target_version\":\"$TARGET_VERSION\",\"message\":\"target version is newer, proceeding with upgrade\",\"timestamp\":$(date +%s)}"
+        ;;
+    3)
+        log "无法比较版本 ($CURRENT_VERSION vs $TARGET_VERSION)，强制升级"
+        mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"updating\",\"current_version\":\"$CURRENT_VERSION\",\"target_version\":\"$TARGET_VERSION\",\"message\":\"cannot compare versions, forcing upgrade\",\"timestamp\":$(date +%s)}"
+        ;;
+esac
 
 # 升级依赖
 DEPS_ARRAY=()
