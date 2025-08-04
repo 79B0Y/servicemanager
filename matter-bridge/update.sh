@@ -1,12 +1,8 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
-# Matter Bridge 升级脚本 - 完整修复版本
-# 版本: v1.2.0
-# 功能: 
-# - 统一使用基础要求里的版本获取方法
-# - 新增版本比较逻辑，避免不必要的降级
-# - 升级前自动备份
-# - 日志中文/MQTT全英文
+# Matter Bridge 升级脚本
+# 版本: v1.0.0
+# 功能: 升级 Home Assistant Matter Bridge 到最新版本
 # =============================================================================
 
 set -euo pipefail
@@ -22,7 +18,7 @@ BACKUP_DIR="/sdcard/isgbackup/$SERVICE_ID"
 LOG_DIR="$SERVICE_DIR/logs"
 LOG_FILE="$LOG_DIR/update.log"
 PROOT_DISTRO="${PROOT_DISTRO:-ubuntu}"
-BRIDGE_PORT="8482"
+MATTER_BRIDGE_PORT="8482"
 MAX_WAIT=300
 INTERVAL=5
 
@@ -63,11 +59,11 @@ mqtt_report() {
     echo "[$(date '+%F %T')] [MQTT] $topic -> $payload" >> "$LOG_FILE"
 }
 
-# 修复: 使用基础要求里的标准版本获取方法
 get_current_version() {
     proot-distro login "$PROOT_DISTRO" -- bash -c '
-        if command -v home-assistant-matter-hub >/dev/null 2>&1; then
-            home-assistant-matter-hub --version 2>/dev/null | grep -Eo "[0-9]+\.[0-9]+\.[0-9]+" || echo "unknown"
+        VERSION_FILE="/root/.pnpm-global/global/5/node_modules/home-assistant-matter-hub/package.json"
+        if [ -f "$VERSION_FILE" ]; then
+            jq -r .version "$VERSION_FILE" 2>/dev/null || echo "unknown"
         else
             echo "unknown"
         fi
@@ -75,11 +71,12 @@ get_current_version() {
 }
 
 get_latest_version() {
-    jq -r ".services[] | select(.id==\"$SERVICE_ID\") | .latest_service_version" "$SERVICEUPDATE_FILE" 2>/dev/null || echo "unknown"
-}
-
-get_upgrade_dependencies() {
-    jq -c ".services[] | select(.id==\"$SERVICE_ID\") | .upgrade_dependencies" "$SERVICEUPDATE_FILE" 2>/dev/null || echo "[]"
+    # 从 serviceupdate.json 获取最新版本
+    if [ -f "$SERVICEUPDATE_FILE" ]; then
+        jq -r ".services[] | select(.id==\"$SERVICE_ID\") | .latest_service_version" "$SERVICEUPDATE_FILE" 2>/dev/null || echo "unknown"
+    else
+        echo "unknown"
+    fi
 }
 
 # 版本比较函数：比较两个语义化版本号
@@ -150,82 +147,52 @@ else
     log "未检测到 backup.sh，跳过自动备份"
 fi
 
-# ------------------- 获取目标版本与升级依赖 -------------------
-log "读取升级依赖配置"
-mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"updating\",\"current_version\":\"$CURRENT_VERSION\",\"message\":\"reading upgrade dependencies\",\"timestamp\":$(date +%s)}"
-if [ -f "$SERVICEUPDATE_FILE" ]; then
-    UPGRADE_DEPS=$(get_upgrade_dependencies)
-    TARGET_VERSION=$(get_latest_version)
-else
-    UPGRADE_DEPS='[]'
-    TARGET_VERSION="unknown"
-fi
+# ------------------- 获取目标版本 -------------------
+TARGET_VERSION=$(get_latest_version)
 
-# 获取 NPM 最新版
+# 如果从配置文件获取失败，使用 latest
 if [ "$TARGET_VERSION" = "unknown" ]; then
-    TARGET_VERSION=$(proot-distro login "$PROOT_DISTRO" -- bash -c "npm view home-assistant-matter-hub version 2>/dev/null") || TARGET_VERSION="latest"
-    log "目标版本自动检测为: $TARGET_VERSION"
+    TARGET_VERSION="latest"
+    log "目标版本设置为: latest (从 npm 获取最新版本)"
 else
     log "目标版本: $TARGET_VERSION"
 fi
 
 # ------------------- 版本比较检查 -------------------
-log "检查版本比较: 当前版本 $CURRENT_VERSION vs 目标版本 $TARGET_VERSION"
-mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"updating\",\"current_version\":\"$CURRENT_VERSION\",\"target_version\":\"$TARGET_VERSION\",\"message\":\"comparing versions\",\"timestamp\":$(date +%s)}"
+if [ "$TARGET_VERSION" != "latest" ]; then
+    log "检查版本比较: 当前版本 $CURRENT_VERSION vs 目标版本 $TARGET_VERSION"
+    mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"updating\",\"current_version\":\"$CURRENT_VERSION\",\"target_version\":\"$TARGET_VERSION\",\"message\":\"comparing versions\",\"timestamp\":$(date +%s)}"
 
-VERSION_COMPARE=$(compare_versions "$CURRENT_VERSION" "$TARGET_VERSION")
+    VERSION_COMPARE=$(compare_versions "$CURRENT_VERSION" "$TARGET_VERSION")
 
-case $VERSION_COMPARE in
-    0)
-        log "当前版本与目标版本相同，无需升级"
-        END_TIME=$(date +%s)
-        DURATION=$((END_TIME - START_TIME))
-        record_update_history "SKIPPED" "$CURRENT_VERSION" "$TARGET_VERSION" "versions are identical"
-        mqtt_report "isg/update/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"skipped\",\"current_version\":\"$CURRENT_VERSION\",\"target_version\":\"$TARGET_VERSION\",\"reason\":\"versions are identical\",\"duration\":$DURATION,\"timestamp\":$END_TIME}"
-        log "✅ 升级跳过: 版本相同"
-        exit 0
-        ;;
-    1)
-        log "当前版本 ($CURRENT_VERSION) 比目标版本 ($TARGET_VERSION) 更新，跳过升级"
-        END_TIME=$(date +%s)
-        DURATION=$((END_TIME - START_TIME))
-        record_update_history "SKIPPED" "$CURRENT_VERSION" "$TARGET_VERSION" "current version is newer"
-        mqtt_report "isg/update/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"skipped\",\"current_version\":\"$CURRENT_VERSION\",\"target_version\":\"$TARGET_VERSION\",\"reason\":\"current version is newer\",\"duration\":$DURATION,\"timestamp\":$END_TIME}"
-        log "✅ 升级跳过: 当前版本更新"
-        exit 0
-        ;;
-    2)
-        log "目标版本 ($TARGET_VERSION) 比当前版本 ($CURRENT_VERSION) 更新，继续升级"
-        mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"updating\",\"current_version\":\"$CURRENT_VERSION\",\"target_version\":\"$TARGET_VERSION\",\"message\":\"target version is newer, proceeding with upgrade\",\"timestamp\":$(date +%s)}"
-        ;;
-    3)
-        log "无法比较版本 ($CURRENT_VERSION vs $TARGET_VERSION)，强制升级"
-        mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"updating\",\"current_version\":\"$CURRENT_VERSION\",\"target_version\":\"$TARGET_VERSION\",\"message\":\"cannot compare versions, forcing upgrade\",\"timestamp\":$(date +%s)}"
-        ;;
-esac
-
-# 升级依赖
-DEPS_ARRAY=()
-if [ "$UPGRADE_DEPS" != "[]" ] && [ "$UPGRADE_DEPS" != "null" ]; then
-    while IFS= read -r dep; do
-        DEPS_ARRAY+=("$dep")
-    done < <(echo "$UPGRADE_DEPS" | jq -r '.[]' 2>/dev/null || true)
-fi
-
-if [ ${#DEPS_ARRAY[@]} -gt 0 ]; then
-    log "安装升级依赖: ${DEPS_ARRAY[*]}"
-    mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"updating\",\"current_version\":\"$CURRENT_VERSION\",\"message\":\"installing upgrade dependencies\",\"dependencies\":$UPGRADE_DEPS,\"timestamp\":$(date +%s)}"
-    for dep in "${DEPS_ARRAY[@]}"; do
-        log "安装依赖: $dep"
-        if ! proot-distro login "$PROOT_DISTRO" -- bash -c "apt-get install -y '$dep'"; then
-            log "依赖 $dep 安装失败"
-            mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"upgrade dependencies installation failed\",\"dependencies\":$UPGRADE_DEPS,\"current_version\":\"$CURRENT_VERSION\",\"timestamp\":$(date +%s)}"
-            record_update_history "FAILED" "$CURRENT_VERSION" "unknown" "upgrade dependencies installation failed"
-            exit 1
-        fi
-    done
-else
-    log "无需安装升级依赖"
+    case $VERSION_COMPARE in
+        0)
+            log "当前版本与目标版本相同，无需升级"
+            END_TIME=$(date +%s)
+            DURATION=$((END_TIME - START_TIME))
+            record_update_history "SKIPPED" "$CURRENT_VERSION" "$TARGET_VERSION" "versions are identical"
+            mqtt_report "isg/update/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"skipped\",\"current_version\":\"$CURRENT_VERSION\",\"target_version\":\"$TARGET_VERSION\",\"reason\":\"versions are identical\",\"duration\":$DURATION,\"timestamp\":$END_TIME}"
+            log "✅ 升级跳过: 版本相同"
+            exit 0
+            ;;
+        1)
+            log "当前版本 ($CURRENT_VERSION) 比目标版本 ($TARGET_VERSION) 更新，跳过升级"
+            END_TIME=$(date +%s)
+            DURATION=$((END_TIME - START_TIME))
+            record_update_history "SKIPPED" "$CURRENT_VERSION" "$TARGET_VERSION" "current version is newer"
+            mqtt_report "isg/update/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"skipped\",\"current_version\":\"$CURRENT_VERSION\",\"target_version\":\"$TARGET_VERSION\",\"reason\":\"current version is newer\",\"duration\":$DURATION,\"timestamp\":$END_TIME}"
+            log "✅ 升级跳过: 当前版本更新"
+            exit 0
+            ;;
+        2)
+            log "目标版本 ($TARGET_VERSION) 比当前版本 ($CURRENT_VERSION) 更新，继续升级"
+            mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"updating\",\"current_version\":\"$CURRENT_VERSION\",\"target_version\":\"$TARGET_VERSION\",\"message\":\"target version is newer, proceeding with upgrade\",\"timestamp\":$(date +%s)}"
+            ;;
+        3)
+            log "无法比较版本 ($CURRENT_VERSION vs $TARGET_VERSION)，强制升级"
+            mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"updating\",\"current_version\":\"$CURRENT_VERSION\",\"target_version\":\"$TARGET_VERSION\",\"message\":\"cannot compare versions, forcing upgrade\",\"timestamp\":$(date +%s)}"
+            ;;
+    esac
 fi
 
 # ------------------- 停止服务 -------------------
@@ -235,10 +202,18 @@ bash "$SERVICE_DIR/stop.sh"
 sleep 5
 
 # ------------------- 升级核心包 -------------------
-log "升级 home-assistant-matter-hub 到版本 $TARGET_VERSION"
+log "升级 home-assistant-matter-hub"
 mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"updating\",\"current_version\":\"$CURRENT_VERSION\",\"message\":\"updating home-assistant-matter-hub package\",\"target_version\":\"$TARGET_VERSION\",\"timestamp\":$(date +%s)}"
 
-if ! proot-distro login "$PROOT_DISTRO" -- bash -c "npm install -g home-assistant-matter-hub@latest"; then
+UPGRADE_CMD="pnpm add -g home-assistant-matter-hub@latest"
+if [ "$TARGET_VERSION" != "latest" ]; then
+    UPGRADE_CMD="pnpm add -g home-assistant-matter-hub@$TARGET_VERSION"
+fi
+
+if ! proot-distro login "$PROOT_DISTRO" -- bash -c "
+    export PATH=\"\$HOME/.pnpm-global/global/bin:\$PATH\"
+    $UPGRADE_CMD
+"; then
     log "home-assistant-matter-hub 升级失败"
     mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"home-assistant-matter-hub package update failed\",\"current_version\":\"$CURRENT_VERSION\",\"timestamp\":$(date +%s)}"
     record_update_history "FAILED" "$CURRENT_VERSION" "unknown" "package update failed"
@@ -253,6 +228,7 @@ if [ "$UPDATED_VERSION" = "unknown" ]; then
     record_update_history "FAILED" "$CURRENT_VERSION" "unknown" "failed to get updated version"
     exit 1
 fi
+
 log "已升级到版本: $UPDATED_VERSION"
 if [ "$CURRENT_VERSION" = "$UPDATED_VERSION" ]; then
     log "版本未发生变化，可能已是最新版"
@@ -262,7 +238,10 @@ fi
 log "启动服务"
 mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"updating\",\"current_version\":\"$CURRENT_VERSION\",\"message\":\"starting service\",\"timestamp\":$(date +%s)}"
 bash "$SERVICE_DIR/start.sh"
+
 log "等待服务就绪"
+mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"updating\",\"current_version\":\"$CURRENT_VERSION\",\"message\":\"waiting for service ready\",\"timestamp\":$(date +%s)}"
+
 WAITED=0
 while [ "$WAITED" -lt "$MAX_WAIT" ]; do
     if bash "$SERVICE_DIR/status.sh" --quiet; then
@@ -273,8 +252,10 @@ while [ "$WAITED" -lt "$MAX_WAIT" ]; do
         mqtt_report "isg/update/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"success\",\"old_version\":\"$CURRENT_VERSION\",\"new_version\":\"$UPDATED_VERSION\",\"duration\":$DURATION,\"timestamp\":$(date +%s)}"
         echo "$UPDATED_VERSION" > "$VERSION_FILE"
         log "升级完成: $CURRENT_VERSION → $UPDATED_VERSION，耗时 ${DURATION}s"
+        
+        # 验证服务状态
         sleep 3
-        if bash "$SERVICE_DIR/status.sh" --json | grep -q '\"status\":\"running\"'; then
+        if bash "$SERVICE_DIR/status.sh" --json | grep -q '"status":"running"'; then
             log "✅ 服务状态验证成功"
         else
             log "⚠️  服务状态验证失败，但升级已完成"
