@@ -298,7 +298,7 @@ check_services() {
         echo "🔍 检查 $SERVICE 安装状态..."
         
         # 检查安装状态（使用增强方法）
-        INSTALL_STATUS=$(check_service_install_status "$SERVICE")
+        INSTALL_STATUS=$(check_service_install_status "$SERVICE" | tail -n1)
         
         case "$INSTALL_STATUS" in
             "installed"|"success")
