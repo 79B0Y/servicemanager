@@ -9,7 +9,7 @@
 # 基础服务信息
 # =============================================================================
 SERVICE_ID="matter-bridge"
-SERVICE_NAME="Matter Bridge"
+SERVICE_NAME="Home Assistant Matter Bridge"
 
 # =============================================================================
 # 基础目录结构
@@ -59,18 +59,17 @@ PROOT_ROOTFS="/data/data/com.termux/files/usr/var/lib/proot-distro/installed-roo
 # =============================================================================
 # Matter Bridge 安装路径 (容器内)
 # =============================================================================
-BRIDGE_INSTALL_DIR="/usr/lib/node_modules/home-assistant-matter-hub"
-BRIDGE_START_SCRIPT="$BRIDGE_INSTALL_DIR/matter-bridge-start.sh"
-BRIDGE_DATA_DIR="/root/.matter_server"
-BRIDGE_CONFIG_FILE="$BRIDGE_DATA_DIR/config.json"
-HASS_TOKEN_FILE="/sdcard/isgbackup/hass/token.txt"
+MATTER_BRIDGE_INSTALL_DIR="/root/.pnpm-global/global/5/node_modules/home-assistant-matter-hub"
+MATTER_BRIDGE_BIN="/root/.pnpm-global/global/5/node_modules/.bin/home-assistant-matter-hub"
+MATTER_BRIDGE_DATA_DIR="/root/.matter_server"
+MATTER_BRIDGE_START_SCRIPT="/sdcard/isgbackup/matter-bridge/matter-bridge-start.sh"
+HA_TOKEN_FILE="/sdcard/isgbackup/hass/token.txt"
 
 # =============================================================================
 # 网络和端口配置
 # =============================================================================
-BRIDGE_PORT="8482"  # Home Assistant Matter Hub 默认端口
-BRIDGE_LISTEN_IP="0.0.0.0"
-HASS_URL="http://127.0.0.1:8123"
+MATTER_BRIDGE_PORT="8482"
+HA_URL="http://127.0.0.1:8123"
 
 # =============================================================================
 # 脚本运行参数
@@ -89,23 +88,13 @@ TEMP_BACKUP_DIR="$TERMUX_TMP_DIR/${SERVICE_ID}_backup_$$"
 TEMP_RESTORE_DIR="$TERMUX_TMP_DIR/${SERVICE_ID}_restore_$$"
 
 # =============================================================================
-# 系统依赖包列表
+# 系统依赖包列表（不包括 nodejs 和 npm，由系统预装）
 # =============================================================================
 SYSTEM_DEPENDENCIES=(
-    "nodejs"
-    "npm"
-    "python3"
-    "python3-pip"
     "curl"
     "wget"
-    "unzip"
-    "git"
+    "jq"
 )
-
-# =============================================================================
-# NPM 包信息
-# =============================================================================
-BRIDGE_PACKAGE_NAME="home-assistant-matter-hub"
 
 # =============================================================================
 # HTTP 超时配置
@@ -160,8 +149,7 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     echo "=========================="
     echo "SERVICE_ID: $SERVICE_ID"
     echo "BASE_DIR: $BASE_DIR"
-    echo "BRIDGE_PORT: $BRIDGE_PORT"
-    echo "BRIDGE_DATA_DIR: $BRIDGE_DATA_DIR"
+    echo "MATTER_BRIDGE_PORT: $MATTER_BRIDGE_PORT"
     echo "BACKUP_DIR: $BACKUP_DIR"
     echo "TEMP_DIR: $TEMP_DIR"
     echo ""
