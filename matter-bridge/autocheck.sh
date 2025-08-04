@@ -1,8 +1,8 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
 # Matter Bridge 自检脚本
-# 版本: v1.2.0
-# 修复: 简化配置提取、统一端口、临时目录使用
+# 版本: v1.0.0
+# 功能: 单服务自检与性能监控
 # =============================================================================
 
 set -euo pipefail
@@ -23,9 +23,8 @@ VERSION_FILE="$SERVICE_DIR/VERSION"
 # Proot 相关路径
 PROOT_DISTRO="${PROOT_DISTRO:-ubuntu}"
 PROOT_ROOTFS="/data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/$PROOT_DISTRO"
-BRIDGE_INSTALL_DIR="$PROOT_ROOTFS/usr/lib/node_modules/home-assistant-matter-hub"
-BRIDGE_DATA_DIR="$PROOT_ROOTFS/root/.matter_server"
-BRIDGE_START_SCRIPT="$PROOT_ROOTFS/usr/lib/node_modules/home-assistant-matter-hub/matter-bridge-start.sh"
+MATTER_BRIDGE_INSTALL_DIR="$PROOT_ROOTFS/root/.pnpm-global/global/5/node_modules/home-assistant-matter-hub"
+MATTER_BRIDGE_DATA_DIR="$PROOT_ROOTFS/root/.matter_server"
 
 # 日志和状态文件
 LOG_DIR="$SERVICE_DIR/logs"
@@ -40,8 +39,8 @@ BACKUP_DIR="${BACKUP_DIR:-/sdcard/isgbackup/$SERVICE_ID}"
 INSTALL_HISTORY_FILE="$BACKUP_DIR/.install_history"
 UPDATE_HISTORY_FILE="$BACKUP_DIR/.update_history"
 
-# 网络和服务参数 - 修复: 统一端口
-BRIDGE_PORT="8482"
+# 网络和服务参数
+MATTER_BRIDGE_PORT="8482"
 MAX_TRIES="${MAX_TRIES:-3}"
 RETRY_INTERVAL="${RETRY_INTERVAL:-60}"
 
@@ -144,8 +143,9 @@ get_current_version_fast() {
     
     # 使用标准版本获取方法
     local proot_version=$(proot-distro login "$PROOT_DISTRO" -- bash -c '
-        if command -v home-assistant-matter-hub >/dev/null 2>&1; then
-            home-assistant-matter-hub --version 2>/dev/null | grep -Eo "[0-9]+\.[0-9]+\.[0-9]+" || echo "unknown"
+        VERSION_FILE="/root/.pnpm-global/global/5/node_modules/home-assistant-matter-hub/package.json"
+        if [ -f "$VERSION_FILE" ]; then
+            jq -r .version "$VERSION_FILE" 2>/dev/null || echo "unknown"
         else
             echo "unknown"
         fi
@@ -165,12 +165,12 @@ get_current_version_fast() {
 # =============================================================================
 
 # 获取 Matter Bridge 进程 PID
-get_bridge_pid() {
-    local port_pid=$(netstat -tnlp 2>/dev/null | grep ":$BRIDGE_PORT " | awk '{print $7}' | cut -d'/' -f1 | head -n1)
+get_matter_bridge_pid() {
+    local port_pid=$(netstat -tnlp 2>/dev/null | grep ":$MATTER_BRIDGE_PORT " | awk '{print $7}' | cut -d'/' -f1 | head -n1)
     
     if [[ -n "$port_pid" && "$port_pid" != "-" ]]; then
         # 验证是否为 matter-bridge 相关进程
-        local cmdline=$(cat /proc/$port_pid/cmdline 2>/dev/null | grep -o 'matter-hub\|matter.*bridge\|node.*matter' || true)
+        local cmdline=$(cat /proc/$port_pid/cmdline 2>/dev/null | grep -o 'matter\|home-assistant-matter-hub' || true)
         if [[ -n "$cmdline" ]]; then
             echo "$port_pid"
             return 0
@@ -215,7 +215,7 @@ check_install_fast() {
         return
     fi
     
-    if [[ -d "$BRIDGE_INSTALL_DIR" ]] && proot-distro login "$PROOT_DISTRO" -- command -v home-assistant-matter-hub >/dev/null 2>&1; then
+    if [[ -d "$MATTER_BRIDGE_INSTALL_DIR" ]]; then
         echo "success"
     else
         if [[ -f "$INSTALL_HISTORY_FILE" && -s "$INSTALL_HISTORY_FILE" ]]; then
@@ -285,7 +285,7 @@ get_improved_restore_status() {
         return
     fi
     
-    if [[ -f "$BRIDGE_START_SCRIPT" || -d "$BRIDGE_DATA_DIR" ]]; then
+    if [[ -d "$MATTER_BRIDGE_DATA_DIR" ]]; then
         echo "success"
     else
         echo "never"
@@ -330,9 +330,9 @@ generate_status_message() {
     
     case "$run_status" in
         "running")
-            local bridge_pid=$(get_bridge_pid 2>/dev/null || echo "")
-            if [[ -n "$bridge_pid" ]]; then
-                local uptime_seconds=$(ps -o etimes= -p "$bridge_pid" 2>/dev/null | xargs || echo 0)
+            local matter_bridge_pid=$(get_matter_bridge_pid 2>/dev/null || echo "")
+            if [[ -n "$matter_bridge_pid" ]]; then
+                local uptime_seconds=$(ps -o etimes= -p "$matter_bridge_pid" 2>/dev/null | xargs || echo 0)
                 local uptime_minutes=$(( uptime_seconds / 60 ))
                 
                 if [[ $uptime_minutes -lt 5 ]]; then
@@ -365,12 +365,12 @@ generate_status_message() {
     esac
 }
 
-# 修复: 简化配置信息获取，只提取要求的字段（端口号）
+# 简化配置信息获取，只输出端口号
 get_config_info_fast() {
-    # 只输出端口号，符合基础要求
+    # 按要求只输出端口号
     cat << EOF
 {
-  "port": "$BRIDGE_PORT"
+  "port": "$MATTER_BRIDGE_PORT"
 }
 EOF
 }
@@ -406,14 +406,14 @@ done
 # -----------------------------------------------------------------------------
 # 获取版本信息
 # -----------------------------------------------------------------------------
-BRIDGE_VERSION=$(get_current_version_fast)
-LATEST_BRIDGE_VERSION=$(get_latest_version)
+MATTER_BRIDGE_VERSION=$(get_current_version_fast)
+LATEST_MATTER_BRIDGE_VERSION=$(get_latest_version)
 SCRIPT_VERSION=$(get_script_version)
 LATEST_SCRIPT_VERSION=$(get_latest_script_version)
 UPGRADE_DEPS=$(get_upgrade_dependencies)
 
 # -----------------------------------------------------------------------------
-# 获取各脚本状态 - 优化版本：减少不必要的检查
+# 获取各脚本状态
 # -----------------------------------------------------------------------------
 RUN_STATUS=$(get_improved_run_status)
 
@@ -442,7 +442,7 @@ log "  restore: $RESTORE_STATUS"
 # -----------------------------------------------------------------------------
 if [[ -f "$DISABLED_FLAG" ]]; then
     CONFIG_INFO=$(get_config_info_fast)
-    mqtt_report "isg/autocheck/$SERVICE_ID/status" "{\"status\":\"disabled\",\"run\":\"disabled\",\"config\":$CONFIG_INFO,\"install\":\"$INSTALL_STATUS\",\"backup\":\"$BACKUP_STATUS\",\"restore\":\"$RESTORE_STATUS\",\"update\":\"$UPDATE_STATUS\",\"current_version\":\"$BRIDGE_VERSION\",\"latest_version\":\"$LATEST_BRIDGE_VERSION\",\"update_info\":\"$UPDATE_INFO\",\"message\":\"service is disabled\",\"timestamp\":$NOW}"
+    mqtt_report "isg/autocheck/$SERVICE_ID/status" "{\"status\":\"disabled\",\"run\":\"disabled\",\"config\":$CONFIG_INFO,\"install\":\"$INSTALL_STATUS\",\"backup\":\"$BACKUP_STATUS\",\"restore\":\"$RESTORE_STATUS\",\"update\":\"$UPDATE_STATUS\",\"current_version\":\"$MATTER_BRIDGE_VERSION\",\"latest_version\":\"$LATEST_MATTER_BRIDGE_VERSION\",\"update_info\":\"$UPDATE_INFO\",\"message\":\"service is disabled\",\"timestamp\":$NOW}"
     RESULT_STATUS="disabled"
     exit 0
 fi
@@ -472,14 +472,14 @@ fi
 # -----------------------------------------------------------------------------
 # 检查服务重启情况
 # -----------------------------------------------------------------------------
-BRIDGE_PID=$(get_bridge_pid || echo "")
-if [[ -n "$BRIDGE_PID" ]]; then
-    BRIDGE_UPTIME=$(ps -o etimes= -p "$BRIDGE_PID" 2>/dev/null | head -n1 | awk '{print $1}' || echo 0)
+MATTER_BRIDGE_PID=$(get_matter_bridge_pid || echo "")
+if [[ -n "$MATTER_BRIDGE_PID" ]]; then
+    MATTER_BRIDGE_UPTIME=$(ps -o etimes= -p "$MATTER_BRIDGE_PID" 2>/dev/null | head -n1 | awk '{print $1}' || echo 0)
     # 确保是数字，移除任何非数字字符
-    BRIDGE_UPTIME=$(echo "$BRIDGE_UPTIME" | tr -d '\n\r\t ' | grep -o '^[0-9]*' || echo 0)
-    BRIDGE_UPTIME=${BRIDGE_UPTIME:-0}
+    MATTER_BRIDGE_UPTIME=$(echo "$MATTER_BRIDGE_UPTIME" | tr -d '\n\r\t ' | grep -o '^[0-9]*' || echo 0)
+    MATTER_BRIDGE_UPTIME=${MATTER_BRIDGE_UPTIME:-0}
 else
-    BRIDGE_UPTIME=0
+    MATTER_BRIDGE_UPTIME=0
 fi
 
 LAST_CHECK=$(cat "$LAST_CHECK_FILE" 2>/dev/null | head -n1 | tr -d '\n\r\t ' || echo 0)
@@ -488,25 +488,25 @@ LAST_CHECK=${LAST_CHECK:-0}
 
 # 检测重启但仅记录，不影响整体状态
 RESTART_DETECTED=false
-if [[ "$LAST_CHECK" -gt 0 && "$BRIDGE_UPTIME" -lt $((NOW - LAST_CHECK)) ]]; then
+if [[ "$LAST_CHECK" -gt 0 && "$MATTER_BRIDGE_UPTIME" -lt $((NOW - LAST_CHECK)) ]]; then
     RESTART_DETECTED=true
-    log "检测到服务重启：运行时间 ${BRIDGE_UPTIME}s < 检查间隔 $((NOW - LAST_CHECK))s"
+    log "检测到服务重启：运行时间 ${MATTER_BRIDGE_UPTIME}s < 检查间隔 $((NOW - LAST_CHECK))s"
 fi
 echo "$NOW" > "$LAST_CHECK_FILE"
 
 # -----------------------------------------------------------------------------
-# 性能监控 - 优化版本：减少系统调用
+# 性能监控
 # -----------------------------------------------------------------------------
-if [[ -n "$BRIDGE_PID" ]]; then
+if [[ -n "$MATTER_BRIDGE_PID" ]]; then
     # 使用单次 ps 调用获取 CPU 和内存信息
-    PS_OUTPUT=$(ps -o pid,pcpu,pmem -p "$BRIDGE_PID" 2>/dev/null | tail -n1)
+    PS_OUTPUT=$(ps -o pid,pcpu,pmem -p "$MATTER_BRIDGE_PID" 2>/dev/null | tail -n1)
     if [[ -n "$PS_OUTPUT" ]]; then
         CPU=$(echo "$PS_OUTPUT" | awk '{print $2}' | head -n1)
         MEM=$(echo "$PS_OUTPUT" | awk '{print $3}' | head -n1)
     else
         # 备用方法：使用 top（较慢）
-        CPU=$(top -b -n 1 -p "$BRIDGE_PID" 2>/dev/null | awk '/'"$BRIDGE_PID"'/ {print $9}' | head -n1)
-        MEM=$(top -b -n 1 -p "$BRIDGE_PID" 2>/dev/null | awk '/'"$BRIDGE_PID"'/ {print $10}' | head -n1)
+        CPU=$(top -b -n 1 -p "$MATTER_BRIDGE_PID" 2>/dev/null | awk '/'"$MATTER_BRIDGE_PID"'/ {print $9}' | head -n1)
+        MEM=$(top -b -n 1 -p "$MATTER_BRIDGE_PID" 2>/dev/null | awk '/'"$MATTER_BRIDGE_PID"'/ {print $10}' | head -n1)
     fi
     # 确保是数字
     CPU=${CPU:-0.0}
@@ -524,22 +524,22 @@ mqtt_report "isg/status/$SERVICE_ID/performance" "{\"cpu\":\"$CPU\",\"mem\":\"$M
 # -----------------------------------------------------------------------------
 log "script_version: $SCRIPT_VERSION"
 log "latest_script_version: $LATEST_SCRIPT_VERSION"
-log "bridge_version: $BRIDGE_VERSION"
-log "latest_bridge_version: $LATEST_BRIDGE_VERSION"
+log "matter_bridge_version: $MATTER_BRIDGE_VERSION"
+log "latest_matter_bridge_version: $LATEST_MATTER_BRIDGE_VERSION"
 log "upgrade_dependencies: $UPGRADE_DEPS"
 log "install_status: $INSTALL_STATUS"
 log "run_status: $RUN_STATUS"
 log "update_info: $UPDATE_INFO"
 
-mqtt_report "isg/autocheck/$SERVICE_ID/version" "{\"script_version\":\"$SCRIPT_VERSION\",\"latest_script_version\":\"$LATEST_SCRIPT_VERSION\",\"bridge_version\":\"$BRIDGE_VERSION\",\"latest_bridge_version\":\"$LATEST_BRIDGE_VERSION\",\"upgrade_dependencies\":$UPGRADE_DEPS}"
+mqtt_report "isg/autocheck/$SERVICE_ID/version" "{\"script_version\":\"$SCRIPT_VERSION\",\"latest_script_version\":\"$LATEST_SCRIPT_VERSION\",\"matter_bridge_version\":\"$MATTER_BRIDGE_VERSION\",\"latest_matter_bridge_version\":\"$LATEST_MATTER_BRIDGE_VERSION\",\"upgrade_dependencies\":$UPGRADE_DEPS}"
 
 # -----------------------------------------------------------------------------
-# 检查端口状态 - 优化版本：快速检查
+# 检查端口状态
 # -----------------------------------------------------------------------------
 HTTP_STATUS="offline"
-if [[ -n "$BRIDGE_PID" ]]; then
+if [[ -n "$MATTER_BRIDGE_PID" ]]; then
     # 快速检查：直接使用 nc 检查端口
-    if nc -z 127.0.0.1 "$BRIDGE_PORT" >/dev/null 2>&1; then
+    if nc -z 127.0.0.1 "$MATTER_BRIDGE_PORT" >/dev/null 2>&1; then
         HTTP_STATUS="online"
     else
         HTTP_STATUS="starting"
@@ -567,12 +567,12 @@ FINAL_MESSAGE="$FINAL_MESSAGE\"install\":\"$INSTALL_STATUS\","
 FINAL_MESSAGE="$FINAL_MESSAGE\"backup\":\"$BACKUP_STATUS\","
 FINAL_MESSAGE="$FINAL_MESSAGE\"restore\":\"$RESTORE_STATUS\","
 FINAL_MESSAGE="$FINAL_MESSAGE\"update\":\"$UPDATE_STATUS\","
-FINAL_MESSAGE="$FINAL_MESSAGE\"current_version\":\"$BRIDGE_VERSION\","
-FINAL_MESSAGE="$FINAL_MESSAGE\"latest_version\":\"$LATEST_BRIDGE_VERSION\","
+FINAL_MESSAGE="$FINAL_MESSAGE\"current_version\":\"$MATTER_BRIDGE_VERSION\","
+FINAL_MESSAGE="$FINAL_MESSAGE\"latest_version\":\"$LATEST_MATTER_BRIDGE_VERSION\","
 FINAL_MESSAGE="$FINAL_MESSAGE\"update_info\":\"$UPDATE_INFO\","
 FINAL_MESSAGE="$FINAL_MESSAGE\"message\":\"$STATUS_MESSAGE\","
 FINAL_MESSAGE="$FINAL_MESSAGE\"http_status\":\"$HTTP_STATUS\","
-FINAL_MESSAGE="$FINAL_MESSAGE\"port\":\"$BRIDGE_PORT\","
+FINAL_MESSAGE="$FINAL_MESSAGE\"port\":\"$MATTER_BRIDGE_PORT\","
 FINAL_MESSAGE="$FINAL_MESSAGE\"restart_detected\":$RESTART_DETECTED,"
 FINAL_MESSAGE="$FINAL_MESSAGE\"timestamp\":$NOW"
 FINAL_MESSAGE="$FINAL_MESSAGE}"
