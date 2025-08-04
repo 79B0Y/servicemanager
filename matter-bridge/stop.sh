@@ -25,7 +25,7 @@ LOG_DIR="$SERVICE_DIR/logs"
 LOG_FILE="$LOG_DIR/stop.log"
 DISABLED_FLAG="$SERVICE_DIR/.disabled"
 
-BRIDGE_PORT="8482"
+MATTER_BRIDGE_PORT="8482"
 MAX_TRIES=30
 
 # -----------------------------------------------------------------------------
@@ -53,13 +53,13 @@ load_mqtt_conf() {
     fi
 }
 
-get_bridge_pid() {
-    local port_pid=$(netstat -tnlp 2>/dev/null | grep ":$BRIDGE_PORT " | awk '{print $7}' | cut -d'/' -f1 | head -n1)
+get_matter_bridge_pid() {
+    local port_pid=$(netstat -tnlp 2>/dev/null | grep ":$MATTER_BRIDGE_PORT " | awk '{print $7}' | cut -d'/' -f1 | head -n1)
     
     if [ -n "$port_pid" ] && [ "$port_pid" != "-" ]; then
         # 验证是否为 matter-bridge 相关进程（检查命令行、工作目录或可执行文件）
-        local cmdline=$(cat /proc/$port_pid/cmdline 2>/dev/null | tr '\0' ' ' | grep -i 'matter-hub\|matter.*bridge\|node.*matter' || true)
-        local cwd=$(ls -l /proc/$port_pid/cwd 2>/dev/null | grep -o 'matter\|node.*modules' || true)
+        local cmdline=$(cat /proc/$port_pid/cmdline 2>/dev/null | tr '\0' ' ' | grep -i 'matter\|home-assistant-matter-hub' || true)
+        local cwd=$(ls -l /proc/$port_pid/cwd 2>/dev/null | grep -o 'matter\|pnpm' || true)
         local exe=$(ls -l /proc/$port_pid/exe 2>/dev/null | grep -o 'node\|matter' || true)
         
         # 如果找到任何一个匹配条件就认为是 matter-bridge 进程
@@ -69,7 +69,7 @@ get_bridge_pid() {
         fi
         
         # 如果上述检查都失败，但端口确实被占用，可能是通过不同方式启动的
-        if netstat -tnlp 2>/dev/null | grep ":$BRIDGE_PORT " | grep -q "$port_pid"; then
+        if netstat -tnlp 2>/dev/null | grep ":$MATTER_BRIDGE_PORT " | grep -q "$port_pid"; then
             echo "$port_pid"
             return 0
         fi
@@ -103,7 +103,7 @@ mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\
 # -----------------------------------------------------------------------------
 # 检查服务是否已经停止
 # -----------------------------------------------------------------------------
-if ! get_bridge_pid > /dev/null 2>&1; then
+if ! get_matter_bridge_pid > /dev/null 2>&1; then
     log "Matter Bridge 已经停止"
     # 确保创建禁用文件
     touch "$DISABLED_FLAG"
@@ -125,10 +125,10 @@ if [ -e "$CONTROL_FILE" ]; then
     mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"stopping\",\"message\":\"created down file to disable auto-start\",\"timestamp\":$(date +%s)}"
 else
     log "控制文件不存在，尝试直接终止进程"
-    BRIDGE_PID=$(get_bridge_pid || true)
-    if [ -n "$BRIDGE_PID" ]; then
-        kill "$BRIDGE_PID" 2>/dev/null || true
-        log "已发送 TERM 信号到 PID $BRIDGE_PID"
+    MATTER_BRIDGE_PID=$(get_matter_bridge_pid || true)
+    if [ -n "$MATTER_BRIDGE_PID" ]; then
+        kill "$MATTER_BRIDGE_PID" 2>/dev/null || true
+        log "已发送 TERM 信号到 PID $MATTER_BRIDGE_PID"
     else
         log "未找到 Matter Bridge 进程"
     fi
@@ -142,17 +142,17 @@ mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\
 
 TRIES=0
 while (( TRIES < MAX_TRIES )); do
-    if ! get_bridge_pid > /dev/null 2>&1; then
+    if ! get_matter_bridge_pid > /dev/null 2>&1; then
         log "Matter Bridge 已成功停止"
         break
     fi
     
     # 如果超过一半时间还没停止，尝试强制杀死
     if [ $TRIES -gt $((MAX_TRIES / 2)) ]; then
-        BRIDGE_PID=$(get_bridge_pid || true)
-        if [ -n "$BRIDGE_PID" ]; then
-            log "发送 KILL 信号强制停止 PID $BRIDGE_PID"
-            kill -9 "$BRIDGE_PID" 2>/dev/null || true
+        MATTER_BRIDGE_PID=$(get_matter_bridge_pid || true)
+        if [ -n "$MATTER_BRIDGE_PID" ]; then
+            log "发送 KILL 信号强制停止 PID $MATTER_BRIDGE_PID"
+            kill -9 "$MATTER_BRIDGE_PID" 2>/dev/null || true
         fi
     fi
     
@@ -163,7 +163,7 @@ done
 # -----------------------------------------------------------------------------
 # 检查停止结果
 # -----------------------------------------------------------------------------
-if get_bridge_pid > /dev/null 2>&1; then
+if get_matter_bridge_pid > /dev/null 2>&1; then
     log "服务在 $((MAX_TRIES*5)) 秒后仍在运行"
     mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"failed\",\"message\":\"service still running after stop timeout\",\"timeout\":$((MAX_TRIES*5)),\"timestamp\":$(date +%s)}"
     exit 1
