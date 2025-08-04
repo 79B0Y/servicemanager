@@ -220,8 +220,6 @@ check_service_install_status() {
     fi
     
     echo "$install_status"
-    
-    echo "$install_status"
 }
 
 # 检查服务状态 - 分两阶段上报
