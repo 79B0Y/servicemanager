@@ -23,7 +23,8 @@ SERVICEUPDATE_FILE="$BASE_DIR/serviceupdate.json"
 LOG_DIR="$SERVICE_DIR/logs"
 LOG_FILE="$LOG_DIR/install.log"
 VERSION_FILE="$SERVICE_DIR/VERSION"
-INSTALL_HISTORY_FILE="$SERVICE_DIR/.install_history"
+BACKUP_DIR="/sdcard/isgbackup/$SERVICE_ID"
+INSTALL_HISTORY_FILE="$BACKUP_DIR/.install_history"
 
 # 服务监控相关路径
 SERVICE_CONTROL_DIR="/data/data/com.termux/files/usr/var/service/$SERVICE_ID"
