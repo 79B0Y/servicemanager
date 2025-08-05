@@ -24,8 +24,8 @@ LOG_DIR="$SERVICE_DIR/logs"
 LOG_FILE="$LOG_DIR/start.log"
 DISABLED_FLAG="$SERVICE_DIR/.disabled"
 
-BRIDGE_PORT="8482"
-MAX_TRIES=30
+MATTER_BRIDGE_PORT="8482"
+MAX_TRIES="${MAX_TRIES:-30}"
 
 # -----------------------------------------------------------------------------
 # 辅助函数
@@ -52,13 +52,13 @@ load_mqtt_conf() {
     fi
 }
 
-get_bridge_pid() {
-    local port_pid=$(netstat -tnlp 2>/dev/null | grep ":$BRIDGE_PORT " | awk '{print $7}' | cut -d'/' -f1 | head -n1)
+get_matter_bridge_pid() {
+    local port_pid=$(netstat -tnlp 2>/dev/null | grep ":$MATTER_BRIDGE_PORT " | awk '{print $7}' | cut -d'/' -f1 | head -n1)
     
     if [ -n "$port_pid" ] && [ "$port_pid" != "-" ]; then
         # 验证是否为 matter-bridge 相关进程（检查命令行、工作目录或可执行文件）
-        local cmdline=$(cat /proc/$port_pid/cmdline 2>/dev/null | tr '\0' ' ' | grep -i 'matter-hub\|matter.*bridge\|node.*matter' || true)
-        local cwd=$(ls -l /proc/$port_pid/cwd 2>/dev/null | grep -o 'matter\|node.*modules' || true)
+        local cmdline=$(cat /proc/$port_pid/cmdline 2>/dev/null | tr '\0' ' ' | grep -i 'matter\|home-assistant-matter-hub' || true)
+        local cwd=$(ls -l /proc/$port_pid/cwd 2>/dev/null | grep -o 'matter\|pnpm' || true)
         local exe=$(ls -l /proc/$port_pid/exe 2>/dev/null | grep -o 'node\|matter' || true)
         
         # 如果找到任何一个匹配条件就认为是 matter-bridge 进程
@@ -68,7 +68,7 @@ get_bridge_pid() {
         fi
         
         # 如果上述检查都失败，但端口确实被占用，可能是通过不同方式启动的
-        if netstat -tnlp 2>/dev/null | grep ":$BRIDGE_PORT " | grep -q "$port_pid"; then
+        if netstat -tnlp 2>/dev/null | grep ":$MATTER_BRIDGE_PORT " | grep -q "$port_pid"; then
             echo "$port_pid"
             return 0
         fi
@@ -97,8 +97,7 @@ mqtt_report() {
 ensure_directories
 
 log "启动 Matter Bridge 服务"
-mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"failed\",\"message\":\"service failed to reach running state\",\"timeout\":$((MAX_TRIES*5)),\"timestamp\":$(date +%s)}"
-exit 1\",\"status\":\"starting\",\"message\":\"starting service\",\"timestamp\":$(date +%s)}"
+mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"starting\",\"message\":\"starting service\",\"timestamp\":$(date +%s)}"
 
 # -----------------------------------------------------------------------------
 # 移除禁用标志和 down 文件
@@ -111,26 +110,6 @@ fi
 if [ -f "$DOWN_FILE" ]; then
     rm -f "$DOWN_FILE"
     log "已移除 down 文件以启用自启动"
-    mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"starting\",\"message\":\"removed down file to enable auto-start\",\"timestamp\":$(date +%s)}"
-fi
-
-# -----------------------------------------------------------------------------
-# 检查服务是否已经在运行
-# -----------------------------------------------------------------------------
-if get_bridge_pid > /dev/null 2>&1; then
-    log "Matter Bridge 已经在运行"
-    mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"success\",\"message\":\"service already running\",\"timestamp\":$(date +%s)}"
-    exit 0
-fi
-
-# -----------------------------------------------------------------------------
-# 启动服务
-# -----------------------------------------------------------------------------
-if [ -e "$CONTROL_FILE" ]; then
-    echo u > "$CONTROL_FILE"
-    log "已发送 'u' 命令到 $CONTROL_FILE"
-else
-    log "控制文件不存在，无法启动服务"
     mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"failed\",\"message\":\"supervise control file not found\",\"timestamp\":$(date +%s)}"
     exit 1
 fi
@@ -142,13 +121,13 @@ log "等待服务启动"
 mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"starting\",\"message\":\"waiting for service ready\",\"timestamp\":$(date +%s)}"
 
 TRIES=0
-while (( TRIES < MAX_TRIES )); do
-    if get_bridge_pid > /dev/null 2>&1; then
+while [[ $TRIES -lt $MAX_TRIES ]]; do
+    if get_matter_bridge_pid > /dev/null 2>&1; then
         # 额外等待一下确保端口接口就绪
         sleep 3
         
         # 验证端口接口
-        if timeout 10 nc -z 127.0.0.1 "$BRIDGE_PORT" 2>/dev/null; then
+        if timeout 10 nc -z 127.0.0.1 "$MATTER_BRIDGE_PORT" 2>/dev/null; then
             log "Matter Bridge 服务启动成功"
             mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"success\",\"message\":\"service started successfully\",\"timestamp\":$(date +%s)}"
             exit 0
@@ -166,4 +145,25 @@ done
 log "服务在 $((MAX_TRIES*5)) 秒内未能启动，恢复禁用状态"
 touch "$DISABLED_FLAG"
 touch "$DOWN_FILE"
-mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID
+mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"failed\",\"message\":\"service failed to reach running state\",\"timeout\":$((MAX_TRIES*5)),\"timestamp\":$(date +%s)}"
+exit 1\"service\":\"$SERVICE_ID\",\"status\":\"starting\",\"message\":\"removed down file to enable auto-start\",\"timestamp\":$(date +%s)}"
+fi
+
+# -----------------------------------------------------------------------------
+# 检查服务是否已经在运行
+# -----------------------------------------------------------------------------
+if get_matter_bridge_pid > /dev/null 2>&1; then
+    log "Matter Bridge 已经在运行"
+    mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"success\",\"message\":\"service already running\",\"timestamp\":$(date +%s)}"
+    exit 0
+fi
+
+# -----------------------------------------------------------------------------
+# 启动服务
+# -----------------------------------------------------------------------------
+if [ -e "$CONTROL_FILE" ]; then
+    echo u > "$CONTROL_FILE"
+    log "已发送 'u' 命令到 $CONTROL_FILE"
+else
+    log "控制文件不存在，无法启动服务"
+    mqtt_report "isg/run/$SERVICE_ID/status" "{
