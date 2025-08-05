@@ -35,7 +35,6 @@ DOWN_FILE="$SERVICE_CONTROL_DIR/down"
 MATTER_BRIDGE_INSTALL_DIR="/root/.pnpm-global/global/5/node_modules/home-assistant-matter-hub"
 MATTER_BRIDGE_BIN="/root/.pnpm-global/global/5/node_modules/.bin/home-assistant-matter-hub"
 MATTER_BRIDGE_DATA_DIR="/root/.matter_server"
-BACKUP_DIR="/sdcard/isgbackup/$SERVICE_ID"
 HA_TOKEN_FILE="/sdcard/isgbackup/hass/token.txt"
 
 # Matter Bridge 特定配置
@@ -47,7 +46,7 @@ MAX_WAIT="${MAX_WAIT:-300}"
 INTERVAL="${INTERVAL:-5}"
 
 # =============================================================================
-# 工具函数
+# 工具函数定义（必须在使用前定义）
 # =============================================================================
 ensure_directories() {
     mkdir -p "$LOG_DIR"
@@ -58,6 +57,13 @@ ensure_directories() {
 
 log() {
     echo "[$(date '+%F %T')] $*" | tee -a "$LOG_FILE"
+}
+
+record_install_history() {
+    local status="$1"
+    local version="$2"
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    echo "$timestamp INSTALL $status $version" >> "$INSTALL_HISTORY_FILE"
 }
 
 load_mqtt_conf() {
@@ -91,16 +97,6 @@ get_current_version() {
             echo "unknown"
         fi
     ' 2>/dev/null || echo "unknown"
-}
-
-        record_install_history "FAILED" "unknown"
-        exit 1
-    fi
-fi_history() {
-    local status="$1"
-    local version="$2"
-    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    echo "$timestamp INSTALL $status $version" >> "$INSTALL_HISTORY_FILE"
 }
 
 # =============================================================================
