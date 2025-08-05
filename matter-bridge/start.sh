@@ -122,19 +122,23 @@ mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\
 
 TRIES=0
 while [[ $TRIES -lt $MAX_TRIES ]]; do
+    log "检查尝试 $((TRIES+1))/$MAX_TRIES"
+    
     if get_matter_bridge_pid > /dev/null 2>&1; then
-        # 额外等待一下确保端口接口就绪
-        sleep 3
+        log "检测到 Matter Bridge 进程"
         
-        # 验证端口接口
-        if timeout 10 nc -z 127.0.0.1 "$MATTER_BRIDGE_PORT" 2>/dev/null; then
-            log "Matter Bridge 服务启动成功"
+        # 检查端口是否在监听
+        if nc -z 127.0.0.1 "$MATTER_BRIDGE_PORT" 2>/dev/null; then
+            log "Matter Bridge 服务启动成功，端口 $MATTER_BRIDGE_PORT 可用"
             mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"success\",\"message\":\"service started successfully\",\"timestamp\":$(date +%s)}"
             exit 0
         else
-            log "Matter Bridge 进程启动但端口接口未就绪，继续等待..."
+            log "进程存在但端口 $MATTER_BRIDGE_PORT 尚未就绪，继续等待..."
         fi
+    else
+        log "未检测到 Matter Bridge 进程，继续等待..."
     fi
+    
     sleep 5
     TRIES=$((TRIES+1))
 done
