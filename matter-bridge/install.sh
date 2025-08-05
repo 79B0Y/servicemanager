@@ -297,7 +297,7 @@ if [ ! -f "$START_SCRIPT" ]; then
   exit 1
 fi
 
-exec proot-distro login ubuntu -- bash -c "bash '$START_SCRIPT'"
+exec proot-distro login ubuntu -- bash -c 'export PATH="$PATH:/root/.pnpm-global/global/bin"; bash /sdcard/isgbackup/matter-bridge/matter-bridge-start.sh'
 EOF
 
 # 赋予执行权限
