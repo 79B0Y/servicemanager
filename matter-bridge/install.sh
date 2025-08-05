@@ -248,7 +248,6 @@ proot-distro login ubuntu -- bash -c '
 SCRIPT_DIR="/sdcard/isgbackup/matter-bridge"
 START_SCRIPT="$SCRIPT_DIR/matter-bridge-start.sh"
 TOKEN_FILE="/sdcard/isgbackup/hass/token.txt"
-HUB_CMD="/root/.pnpm-global/global/5/node_modules/.bin/home-assistant-matter-hub"
 
 mkdir -p "$SCRIPT_DIR"
 
@@ -273,7 +272,7 @@ if [ ! -x "\$HUB_CMD" ]; then
 fi
 
 echo "[✅] 启动 Home Assistant Matter Hub..."
-exec "\$HUB_CMD" start \\
+exec home-assistant-matter-hub start \\
   --home-assistant-url="\$HA_URL" \\
   --home-assistant-access-token="\$HA_TOKEN" \\
   --http-port="\$HUB_PORT" \\
