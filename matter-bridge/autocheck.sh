@@ -561,31 +561,68 @@ fi
 CONFIG_INFO=$(get_config_info_fast 2>/dev/null)
 STATUS_MESSAGE=$(generate_status_message "$RUN_STATUS")
 
+log "preparing final status report"
+log "  result_status: $RESULT_STATUS"
+log "  run_status: $RUN_STATUS" 
+log "  install_status: $INSTALL_STATUS"
+log "  config_info: $CONFIG_INFO"
+
 # -----------------------------------------------------------------------------
 # 生成最终的综合状态消息
 # -----------------------------------------------------------------------------
-log "autocheck complete"
+log "generating final status message"
+
+# 获取配置信息和状态消息
+CONFIG_INFO=$(get_config_info_fast 2>/dev/null)
+STATUS_MESSAGE=$(generate_status_message "$RUN_STATUS")
+
+log "config_info: $CONFIG_INFO"
+log "status_message: $STATUS_MESSAGE"
 
 # 构建最终状态消息
-FINAL_MESSAGE="{"
-FINAL_MESSAGE="$FINAL_MESSAGE\"status\":\"$RESULT_STATUS\","
-FINAL_MESSAGE="$FINAL_MESSAGE\"run\":\"$RUN_STATUS\","
-FINAL_MESSAGE="$FINAL_MESSAGE\"config\":$CONFIG_INFO,"
-FINAL_MESSAGE="$FINAL_MESSAGE\"install\":\"$INSTALL_STATUS\","
-FINAL_MESSAGE="$FINAL_MESSAGE\"backup\":\"$BACKUP_STATUS\","
-FINAL_MESSAGE="$FINAL_MESSAGE\"restore\":\"$RESTORE_STATUS\","
-FINAL_MESSAGE="$FINAL_MESSAGE\"update\":\"$UPDATE_STATUS\","
-FINAL_MESSAGE="$FINAL_MESSAGE\"current_version\":\"$MATTER_BRIDGE_VERSION\","
-FINAL_MESSAGE="$FINAL_MESSAGE\"latest_version\":\"$LATEST_MATTER_BRIDGE_VERSION\","
-FINAL_MESSAGE="$FINAL_MESSAGE\"update_info\":\"$UPDATE_INFO\","
-FINAL_MESSAGE="$FINAL_MESSAGE\"message\":\"$STATUS_MESSAGE\","
-FINAL_MESSAGE="$FINAL_MESSAGE\"http_status\":\"$HTTP_STATUS\","
-FINAL_MESSAGE="$FINAL_MESSAGE\"port\":\"$MATTER_BRIDGE_PORT\","
-FINAL_MESSAGE="$FINAL_MESSAGE\"restart_detected\":$RESTART_DETECTED,"
-FINAL_MESSAGE="$FINAL_MESSAGE\"timestamp\":$NOW"
-FINAL_MESSAGE="$FINAL_MESSAGE}"
+FINAL_MESSAGE=$(jq -n \
+    --arg status "$RESULT_STATUS" \
+    --arg run "$RUN_STATUS" \
+    --argjson config "$CONFIG_INFO" \
+    --arg install "$INSTALL_STATUS" \
+    --arg backup "$BACKUP_STATUS" \
+    --arg restore "$RESTORE_STATUS" \
+    --arg update "$UPDATE_STATUS" \
+    --arg current_version "$MATTER_BRIDGE_VERSION" \
+    --arg latest_version "$LATEST_MATTER_BRIDGE_VERSION" \
+    --arg update_info "$UPDATE_INFO" \
+    --arg message "$STATUS_MESSAGE" \
+    --arg http_status "$HTTP_STATUS" \
+    --arg port "$MATTER_BRIDGE_PORT" \
+    --argjson restart_detected "$RESTART_DETECTED" \
+    --argjson timestamp "$NOW" \
+    '{
+        status: $status,
+        run: $run,
+        config: $config,
+        install: $install,
+        backup: $backup,
+        restore: $restore,
+        update: $update,
+        current_version: $current_version,
+        latest_version: $latest_version,
+        update_info: $update_info,
+        message: $message,
+        http_status: $http_status,
+        port: ($port|tonumber),
+        restart_detected: $restart_detected,
+        timestamp: $timestamp
+    }' 2>/dev/null)
 
-mqtt_report "isg/autocheck/$SERVICE_ID/status" "$FINAL_MESSAGE"
+if [[ -n "$FINAL_MESSAGE" ]]; then
+    log "final_message generated successfully"
+    mqtt_report "isg/autocheck/$SERVICE_ID/status" "$FINAL_MESSAGE"
+else
+    log "failed to generate final_message, using fallback"
+    # 备用方案：使用字符串拼接
+    FINAL_MESSAGE_FALLBACK="{\"status\":\"$RESULT_STATUS\",\"run\":\"$RUN_STATUS\",\"config\":$CONFIG_INFO,\"install\":\"$INSTALL_STATUS\",\"backup\":\"$BACKUP_STATUS\",\"restore\":\"$RESTORE_STATUS\",\"update\":\"$UPDATE_STATUS\",\"current_version\":\"$MATTER_BRIDGE_VERSION\",\"latest_version\":\"$LATEST_MATTER_BRIDGE_VERSION\",\"update_info\":\"$UPDATE_INFO\",\"message\":\"$STATUS_MESSAGE\",\"http_status\":\"$HTTP_STATUS\",\"port\":$MATTER_BRIDGE_PORT,\"restart_detected\":$RESTART_DETECTED,\"timestamp\":$NOW}"
+    mqtt_report "isg/autocheck/$SERVICE_ID/status" "$FINAL_MESSAGE_FALLBACK"
+fi
 
 # -----------------------------------------------------------------------------
 # 清理日志文件
