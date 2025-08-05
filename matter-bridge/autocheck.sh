@@ -170,7 +170,7 @@ get_matter_bridge_pid() {
     
     if [[ -n "$port_pid" && "$port_pid" != "-" ]]; then
         # 验证是否为 matter-bridge 相关进程
-        local cmdline=$(cat /proc/$port_pid/cmdline 2>/dev/null | grep -o 'matter\|home-assistant-matter-hub' || true)
+        local cmdline=$(cat /proc/$port_pid/cmdline 2>/dev/null | tr '\0' ' ' | grep -i 'matter\|home-assistant-matter-hub' || true)
         if [[ -n "$cmdline" ]]; then
             echo "$port_pid"
             return 0
@@ -192,15 +192,17 @@ get_improved_run_status() {
         return
     fi
     
-    local status_output
-    status_output=$(bash "$SERVICE_DIR/status.sh" 2>/dev/null)
-    
-    case "$status_output" in
-        "running") echo "running" ;;
-        "starting") echo "starting" ;;
-        "stopped") echo "stopped" ;;
-        *) echo "stopped" ;;
-    esac
+    # 直接检查进程是否存在
+    if get_matter_bridge_pid > /dev/null 2>&1; then
+        # 检查端口是否在监听
+        if nc -z 127.0.0.1 "$MATTER_BRIDGE_PORT" >/dev/null 2>&1; then
+            echo "running"
+        else
+            echo "starting"
+        fi
+    else
+        echo "stopped"
+    fi
 }
 
 # 快速检查安装状态
@@ -215,7 +217,8 @@ check_install_fast() {
         return
     fi
     
-    if [[ -d "$MATTER_BRIDGE_INSTALL_DIR" ]]; then
+    # 检查 pnpm 全局安装目录
+    if proot-distro login "$PROOT_DISTRO" -- test -d "/root/.pnpm-global/global/5/node_modules/home-assistant-matter-hub" 2>/dev/null; then
         echo "success"
     else
         if [[ -f "$INSTALL_HISTORY_FILE" && -s "$INSTALL_HISTORY_FILE" ]]; then
@@ -285,7 +288,8 @@ get_improved_restore_status() {
         return
     fi
     
-    if [[ -d "$MATTER_BRIDGE_DATA_DIR" ]]; then
+    # 检查 proot 容器内的数据目录
+    if proot-distro login "$PROOT_DISTRO" -- test -d "/root/.matter_server" 2>/dev/null; then
         echo "success"
     else
         echo "never"
@@ -416,12 +420,16 @@ UPGRADE_DEPS=$(get_upgrade_dependencies)
 # 获取各脚本状态
 # -----------------------------------------------------------------------------
 RUN_STATUS=$(get_improved_run_status)
+log "检测到运行状态: $RUN_STATUS"
 
-# 只有当服务不在运行时才详细检查安装状态
-if [[ "$RUN_STATUS" == "running" ]]; then
-    INSTALL_STATUS="success"  # 如果在运行，肯定已安装
-else
-    INSTALL_STATUS=$(check_install_fast)
+# 检查安装状态
+INSTALL_STATUS=$(check_install_fast)
+log "检测到安装状态: $INSTALL_STATUS"
+
+# 如果服务在运行但安装状态不是success，修正安装状态
+if [[ "$RUN_STATUS" == "running" && "$INSTALL_STATUS" != "success" ]]; then
+    INSTALL_STATUS="success"
+    log "修正安装状态为: $INSTALL_STATUS (因为服务正在运行)"
 fi
 
 # 其他状态检查
