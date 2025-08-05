@@ -197,7 +197,7 @@ if ! proot-distro login "$PROOT_DISTRO" -- bash -c "
     export PATH=\"\$HOME/.pnpm-global/global/bin:\$PATH\"
     pnpm config set global-dir ~/.pnpm-global/global
     pnpm config set global-bin-dir ~/.pnpm-global/global/bin
-    pnpm config set store-dir ~/.pnpm-store --global
+    pnpm config set store-dir ~/.pnpm-global/store/v10 --global
     echo 'export PATH=\"\$HOME/.pnpm-global/global/bin:\$PATH\"' >> ~/.bashrc
     source ~/.bashrc
 "; then
