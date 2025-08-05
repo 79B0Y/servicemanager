@@ -266,11 +266,6 @@ else
   exit 1
 fi
 
-if [ ! -x "\$HUB_CMD" ]; then
-  echo "[❌] Matter Hub 执行文件不存在: \$HUB_CMD" >&2
-  exit 1
-fi
-
 echo "[✅] 启动 Home Assistant Matter Hub..."
 exec home-assistant-matter-hub start \\
   --home-assistant-url="\$HA_URL" \\
