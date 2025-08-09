@@ -55,7 +55,7 @@ load_mqtt_conf() {
 }
 
 get_guardian_pid() {
-    # 查找 isg-guardian 进程
+    # 在 proot 容器内查找 isg-guardian 进程
     local pid=$(proot-distro login "$PROOT_DISTRO" -- bash -c "pgrep -f 'isg-guardian' | head -n1" 2>/dev/null || echo "")
     
     if [ -n "$pid" ]; then
@@ -119,8 +119,8 @@ else
     log "控制文件不存在，尝试直接终止进程"
     GUARDIAN_PID=$(get_guardian_pid || true)
     if [ -n "$GUARDIAN_PID" ]; then
-        proot-distro login "$PROOT_DISTRO" -- bash -c "kill $GUARDIAN_PID" 2>/dev/null || true
         log "已发送 TERM 信号到 PID $GUARDIAN_PID"
+        proot-distro login "$PROOT_DISTRO" -- bash -c "kill $GUARDIAN_PID" 2>/dev/null || true
     else
         log "未找到 isg-guardian 进程"
     fi
@@ -138,6 +138,8 @@ while (( TRIES < MAX_TRIES )); do
         log "isg-guardian 已成功停止"
         break
     fi
+    
+    log "等待进程停止... (${TRIES}/${MAX_TRIES})"
     
     # 如果超过一半时间还没停止，尝试强制杀死
     if [ $TRIES -gt $((MAX_TRIES / 2)) ]; then
