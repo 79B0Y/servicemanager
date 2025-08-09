@@ -87,12 +87,12 @@ mqtt_report() {
 }
 
 get_guardian_pid() {
-    # 查找 isg-guardian 进程
-    local pid=$(proot-distro login "$PROOT_DISTRO" -- bash -c "pgrep -f 'isg-guardian' | head -n1" 2>/dev/null || echo "")
+    # 直接在 Termux 主环境查找 iSG App Guardian 进程
+    local pid=$(pgrep -f 'iSG App Guardian' | head -n1 2>/dev/null || echo "")
     
     if [ -n "$pid" ]; then
-        # 验证是否为正确的 isg-guardian 进程
-        local cmdline=$(proot-distro login "$PROOT_DISTRO" -- bash -c "cat /proc/$pid/cmdline 2>/dev/null | tr '\0' ' ' | grep -i 'isg-guardian'" 2>/dev/null || echo "")
+        # 验证是否为正确的 iSG App Guardian 进程
+        local cmdline=$(cat /proc/$pid/cmdline 2>/dev/null | tr '\0' ' ' | grep -i 'iSG App Guardian' || echo "")
         if [ -n "$cmdline" ]; then
             echo "$pid"
             return 0
@@ -155,7 +155,7 @@ fi
 # 检查运行状态
 PID=$(get_guardian_pid 2>/dev/null || true)
 if [[ -n "$PID" ]]; then
-    RUNTIME=$(proot-distro login "$PROOT_DISTRO" -- bash -c "ps -o etime= -p $PID 2>/dev/null | xargs" || echo "")
+    RUNTIME=$(ps -o etime= -p "$PID" 2>/dev/null | xargs || echo "")
     # 进一步验证服务状态
     if [[ "$(get_service_status)" == "running" ]]; then
         STATUS="running"
