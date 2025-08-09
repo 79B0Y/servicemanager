@@ -55,12 +55,12 @@ load_mqtt_conf() {
 }
 
 get_guardian_pid() {
-    # 在 proot 容器内查找 iSG App Guardian 进程
-    local pid=$(proot-distro login "$PROOT_DISTRO" -- bash -c "pgrep -f 'iSG App Guardian' | head -n1" 2>/dev/null || echo "")
+    # 直接在 Termux 主环境查找 iSG App Guardian 进程
+    local pid=$(pgrep -f 'iSG App Guardian' | head -n1 2>/dev/null || echo "")
     
     if [ -n "$pid" ]; then
         # 验证是否为正确的 iSG App Guardian 进程
-        local cmdline=$(proot-distro login "$PROOT_DISTRO" -- bash -c "cat /proc/$pid/cmdline 2>/dev/null | tr '\0' ' ' | grep -i 'iSG App Guardian'" 2>/dev/null || echo "")
+        local cmdline=$(cat /proc/$pid/cmdline 2>/dev/null | tr '\0' ' ' | grep -i 'iSG App Guardian' || echo "")
         if [ -n "$cmdline" ]; then
             echo "$pid"
             return 0
@@ -120,7 +120,7 @@ else
     GUARDIAN_PID=$(get_guardian_pid || true)
     if [ -n "$GUARDIAN_PID" ]; then
         log "已发送 TERM 信号到 PID $GUARDIAN_PID"
-        proot-distro login "$PROOT_DISTRO" -- bash -c "kill $GUARDIAN_PID" 2>/dev/null || true
+        kill "$GUARDIAN_PID" 2>/dev/null || true
     else
         log "未找到 iSG App Guardian 进程"
     fi
@@ -146,7 +146,7 @@ while (( TRIES < MAX_TRIES )); do
         GUARDIAN_PID=$(get_guardian_pid || true)
         if [ -n "$GUARDIAN_PID" ]; then
             log "发送 KILL 信号强制停止 PID $GUARDIAN_PID"
-            proot-distro login "$PROOT_DISTRO" -- bash -c "kill -9 $GUARDIAN_PID" 2>/dev/null || true
+            kill -9 "$GUARDIAN_PID" 2>/dev/null || true
         fi
     fi
     
