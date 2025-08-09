@@ -148,55 +148,50 @@ mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"messa
 # 获取 MQTT 配置
 load_mqtt_conf
 
-proot-distro login "$PROOT_DISTRO" -- bash -c "
-cat > $GUARDIAN_CONFIG_FILE << EOF
+proot-distro login "$PROOT_DISTRO" -- bash -lc '
+GUARDIAN_CONFIG_FILE="$HOME/isg-guardian/config.yaml"
+cat > "$GUARDIAN_CONFIG_FILE" <<EOF
 # iSG Guardian Configuration File
-# Copy this file to config.yaml and modify as needed
-# iSG应用配置
 app:
   package_name: "com.linknlink.app.device.isg"
   activity_name: "cn.com.broadlink.unify.app.activity.common.LoadingActivity"
 
-# ADB连接配置
 adb:
-  auto_connect: true           # 自动建立ADB连接
-  host: "127.0.0.1"           # ADB主机地址
-  port: 5555                  # ADB端口
-  tcp_port: 5555              # TCP端口设置
-  retry_count: 3              # 连接重试次数
-  retry_delay: 5              # 重试延迟(秒)
-  setup_commands:             # 连接前执行的命令
+  auto_connect: true
+  host: "127.0.0.1"
+  port: 5555
+  tcp_port: 5555
+  retry_count: 3
+  retry_delay: 5
+  setup_commands:
+    - setprop
     - "setprop service.adb.tcp.port 5555"
     - "stop adbd"
     - "start adbd"
 
-# 监控配置
 monitor:
-  check_interval: 30        # 检查间隔(秒)
-  restart_delay: 5          # 重启延迟(秒)
-  max_restarts: 3           # 最大重启次数
-  cooldown_time: 300        # 冷却时间(秒)
+  check_interval: 30
+  restart_delay: 5
+  max_restarts: 3
+  cooldown_time: 300
 
-# 日志配置
 logging:
   crash_log_dir: "data/crash_logs"
   status_log_file: "data/app_status.log"
-  max_log_files: 50         # 最大日志文件数
-  max_file_size: "5MB"      # 单文件最大大小
-  retention_days: 7         # 保留天数
+  max_log_files: 50
+  max_file_size: "5MB"
+  retention_days: 7
 
-# MQTT配置 (可选)
 mqtt:
   enabled: true
-  broker: \"$MQTT_HOST\"
-  port: $MQTT_PORT
-  username: \"$MQTT_USER\"
-  password: \"$MQTT_PASS\"
-  topic_prefix: \"isg\"
-  device_id: \"isg_guardian\"
-
+  broker: "'${MQTT_HOST}'"
+  port: '"${MQTT_PORT}"'
+  username: "'${MQTT_USER}'"
+  password: "'${MQTT_PASS}'"
+  topic_prefix: "isg"
+  device_id: "isg_guardian"
 EOF
-"
+'
 
 # 创建数据目录
 proot-distro login "$PROOT_DISTRO" -- mkdir -p "$GUARDIAN_INSTALL_DIR/data"
