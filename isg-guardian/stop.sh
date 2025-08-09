@@ -55,12 +55,12 @@ load_mqtt_conf() {
 }
 
 get_guardian_pid() {
-    # 在 proot 容器内查找 isg-guardian 进程
-    local pid=$(proot-distro login "$PROOT_DISTRO" -- bash -c "pgrep -f 'isg-guardian' | head -n1" 2>/dev/null || echo "")
+    # 在 proot 容器内查找 iSG App Guardian 进程
+    local pid=$(proot-distro login "$PROOT_DISTRO" -- bash -c "pgrep -f 'iSG App Guardian' | head -n1" 2>/dev/null || echo "")
     
     if [ -n "$pid" ]; then
-        # 验证是否为正确的 isg-guardian 进程
-        local cmdline=$(proot-distro login "$PROOT_DISTRO" -- bash -c "cat /proc/$pid/cmdline 2>/dev/null | tr '\0' ' ' | grep -i 'isg-guardian'" 2>/dev/null || echo "")
+        # 验证是否为正确的 iSG App Guardian 进程
+        local cmdline=$(proot-distro login "$PROOT_DISTRO" -- bash -c "cat /proc/$pid/cmdline 2>/dev/null | tr '\0' ' ' | grep -i 'iSG App Guardian'" 2>/dev/null || echo "")
         if [ -n "$cmdline" ]; then
             echo "$pid"
             return 0
@@ -96,7 +96,7 @@ mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\
 # 检查服务是否已经停止
 # -----------------------------------------------------------------------------
 if ! get_guardian_pid > /dev/null 2>&1; then
-    log "isg-guardian 已经停止"
+    log "iSG App Guardian 已经停止"
     # 确保创建禁用文件
     touch "$DISABLED_FLAG"
     touch "$DOWN_FILE"
@@ -122,7 +122,7 @@ else
         log "已发送 TERM 信号到 PID $GUARDIAN_PID"
         proot-distro login "$PROOT_DISTRO" -- bash -c "kill $GUARDIAN_PID" 2>/dev/null || true
     else
-        log "未找到 isg-guardian 进程"
+        log "未找到 iSG App Guardian 进程"
     fi
 fi
 
@@ -135,7 +135,7 @@ mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\
 TRIES=0
 while (( TRIES < MAX_TRIES )); do
     if ! get_guardian_pid > /dev/null 2>&1; then
-        log "isg-guardian 已成功停止"
+        log "iSG App Guardian 已成功停止"
         break
     fi
     
