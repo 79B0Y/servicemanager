@@ -55,12 +55,12 @@ load_mqtt_conf() {
 }
 
 get_guardian_pid() {
-    # 查找 isg-guardian 进程
-    local pid=$(proot-distro login "$PROOT_DISTRO" -- bash -c "pgrep -f 'isg-guardian' | head -n1" 2>/dev/null || echo "")
+    # 在 proot 容器内查找 iSG App Guardian 进程
+    local pid=$(proot-distro login "$PROOT_DISTRO" -- bash -c "pgrep -f 'iSG App Guardian' | head -n1" 2>/dev/null || echo "")
     
     if [ -n "$pid" ]; then
-        # 验证是否为正确的 isg-guardian 进程
-        local cmdline=$(proot-distro login "$PROOT_DISTRO" -- bash -c "cat /proc/$pid/cmdline 2>/dev/null | tr '\0' ' ' | grep -i 'isg-guardian'" 2>/dev/null || echo "")
+        # 验证是否为正确的 iSG App Guardian 进程
+        local cmdline=$(proot-distro login "$PROOT_DISTRO" -- bash -c "cat /proc/$pid/cmdline 2>/dev/null | tr '\0' ' ' | grep -i 'iSG App Guardian'" 2>/dev/null || echo "")
         if [ -n "$cmdline" ]; then
             echo "$pid"
             return 0
@@ -132,11 +132,34 @@ fi
 
 sleep 5
 
-# 确认服务已停止
-if get_guardian_pid > /dev/null 2>&1; then
-    log "警告: isg-guardian 进程仍在运行，尝试强制停止"
+# 确认服务已停止 - 添加超时和调试信息
+log "检查服务是否已停止"
+STOP_WAIT_COUNT=0
+MAX_STOP_WAIT=10  # 最多等待10次，每次2秒
+
+while [ $STOP_WAIT_COUNT -lt $MAX_STOP_WAIT ]; do
+    if ! get_guardian_pid > /dev/null 2>&1; then
+        log "✅ iSG App Guardian 进程已成功停止"
+        break
+    fi
+    
+    log "iSG App Guardian 进程仍在运行，等待停止... (${STOP_WAIT_COUNT}/${MAX_STOP_WAIT})"
     GUARDIAN_PID=$(get_guardian_pid || echo "")
     if [ -n "$GUARDIAN_PID" ]; then
+        log "当前进程 PID: $GUARDIAN_PID"
+        # 强制杀死进程
+        proot-distro login "$PROOT_DISTRO" -- bash -c "kill -9 $GUARDIAN_PID" 2>/dev/null || true
+    fi
+    
+    sleep 2
+    STOP_WAIT_COUNT=$((STOP_WAIT_COUNT + 1))
+done
+
+if get_guardian_pid > /dev/null 2>&1; then
+    log "警告: iSG App Guardian 进程在 $((MAX_STOP_WAIT * 2)) 秒后仍在运行，继续卸载"
+    GUARDIAN_PID=$(get_guardian_pid || echo "")
+    if [ -n "$GUARDIAN_PID" ]; then
+        log "强制终止进程 PID: $GUARDIAN_PID"
         proot-distro login "$PROOT_DISTRO" -- bash -c "kill -9 $GUARDIAN_PID" 2>/dev/null || true
     fi
 fi
@@ -152,19 +175,19 @@ log_step() {
     echo -e "\n[STEP] $1"
 }
 
-log_step "杀死可能运行的 isg-guardian 进程"
-# 查找所有 isg-guardian 相关进程
-GUARDIAN_PIDS=$(pgrep -f 'isg-guardian' || true)
+log_step "杀死可能运行的 iSG App Guardian 进程"
+# 查找所有 iSG App Guardian 相关进程
+GUARDIAN_PIDS=$(pgrep -f 'iSG App Guardian' || true)
 if [ -n "$GUARDIAN_PIDS" ]; then
     for pid in $GUARDIAN_PIDS; do
-        # 检查进程命令行确认是 isg-guardian
-        GUARDIAN_CMD=$(cat /proc/$pid/cmdline 2>/dev/null | tr '\0' ' ' | grep -i 'isg-guardian' || true)
+        # 检查进程命令行确认是 iSG App Guardian
+        GUARDIAN_CMD=$(cat /proc/$pid/cmdline 2>/dev/null | tr '\0' ' ' | grep -i 'iSG App Guardian' || true)
         if [ -n "$GUARDIAN_CMD" ]; then
-            kill "$pid" && echo "[INFO] 杀死 isg-guardian 进程 $pid" || echo "[INFO] 杀死进程失败"
+            kill "$pid" && echo "[INFO] 杀死 iSG App Guardian 进程 $pid" || echo "[INFO] 杀死进程失败"
         fi
     done
 else
-    echo "[INFO] 未发现 isg-guardian 进程"
+    echo "[INFO] 未发现 iSG App Guardian 进程"
 fi
 
 log_step "移除 isg-guardian 安装目录"
