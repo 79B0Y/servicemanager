@@ -54,12 +54,12 @@ load_mqtt_conf() {
 }
 
 get_guardian_pid() {
-    # 查找 isg-guardian 进程
-    local pid=$(proot-distro login "$PROOT_DISTRO" -- bash -c "pgrep -f 'isg-guardian' | head -n1" 2>/dev/null || echo "")
+    # 查找 iSG App Guardian 进程
+    local pid=$(proot-distro login "$PROOT_DISTRO" -- bash -c "pgrep -f 'iSG App Guardian' | head -n1" 2>/dev/null || echo "")
     
     if [ -n "$pid" ]; then
-        # 验证是否为正确的 isg-guardian 进程
-        local cmdline=$(proot-distro login "$PROOT_DISTRO" -- bash -c "cat /proc/$pid/cmdline 2>/dev/null | tr '\0' ' ' | grep -i 'isg-guardian'" 2>/dev/null || echo "")
+        # 验证是否为正确的 iSG App Guardian 进程
+        local cmdline=$(proot-distro login "$PROOT_DISTRO" -- bash -c "cat /proc/$pid/cmdline 2>/dev/null | tr '\0' ' ' | grep -i 'iSG App Guardian'" 2>/dev/null || echo "")
         if [ -n "$cmdline" ]; then
             echo "$pid"
             return 0
@@ -109,7 +109,7 @@ fi
 # 检查服务是否已经在运行
 # -----------------------------------------------------------------------------
 if get_guardian_pid > /dev/null 2>&1; then
-    log "isg-guardian 已经在运行"
+    log "iSG App Guardian 已经在运行"
     mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"success\",\"message\":\"service already running\",\"timestamp\":$(date +%s)}"
     exit 0
 fi
@@ -140,11 +140,11 @@ while (( TRIES < MAX_TRIES )); do
         
         # 验证服务状态
         if proot-distro login "$PROOT_DISTRO" -- bash -c "cd $GUARDIAN_INSTALL_DIR && source venv/bin/activate && isg-guardian status" 2>/dev/null | grep -q "running"; then
-            log "isg-guardian 服务启动成功"
+            log "iSG App Guardian 服务启动成功"
             mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"success\",\"message\":\"service started successfully\",\"timestamp\":$(date +%s)}"
             exit 0
         else
-            log "isg-guardian 进程启动但状态检查失败，继续等待..."
+            log "iSG App Guardian 进程启动但状态检查失败，继续等待..."
         fi
     fi
     sleep 5
