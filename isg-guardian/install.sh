@@ -208,11 +208,27 @@ mkdir -p "$SERVICE_CONTROL_DIR"
 # 写入 run 启动脚本
 cat << 'EOF' > "$RUN_FILE"
 #!/data/data/com.termux/files/usr/bin/sh
-# 启动 isg-guardian
-exec proot-distro login ubuntu -- bash -c '
-    cd /root/isg-guardian
-    source /root/isg-guardian/venv/bin/activate
-    isg-guardian start
+export PROCESS_TAG="${PROCESS_TAG}"
+
+exec proot-distro login ubuntu -- bash -lc '
+  set -e
+  cd /root/isg-guardian
+
+  # 如果有 venv 就激活
+  if [ -f "venv/bin/activate" ]; then
+    source venv/bin/activate
+  fi
+
+  # 补齐 PATH（非交互 shell 不会加载 ~/.profile，补上 ~/.local/bin）
+  export PATH="$HOME/.local/bin:$PATH"
+
+  # 优先用命令；没有就回退到 python -m
+  if command -v isg-guardian >/dev/null 2>&1; then
+    exec isg-guardian start
+  else
+    echo "[info] isg-guardian 不在 PATH，回退到 python -m..."
+    exec python -m isg_guardian start
+  fi
 '
 EOF
 
