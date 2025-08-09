@@ -163,11 +163,12 @@ get_current_version_fast() {
 
 # 获取 iSG App Guardian 进程 PID
 get_guardian_pid() {
-    local pid=$(proot-distro login "$PROOT_DISTRO" -- bash -c "pgrep -f 'iSG App Guardian' | head -n1" 2>/dev/null || echo "")
+    # 直接在 Termux 主环境查找 iSG App Guardian 进程
+    local pid=$(pgrep -f 'iSG App Guardian' | head -n1 2>/dev/null || echo "")
     
     if [[ -n "$pid" ]]; then
         # 验证是否为 iSG App Guardian 相关进程
-        local cmdline=$(proot-distro login "$PROOT_DISTRO" -- bash -c "cat /proc/$pid/cmdline 2>/dev/null | tr '\0' ' ' | grep -i 'iSG App Guardian'" 2>/dev/null || echo "")
+        local cmdline=$(cat /proc/$pid/cmdline 2>/dev/null | tr '\0' ' ' | grep -i 'iSG App Guardian' || echo "")
         if [[ -n "$cmdline" ]]; then
             echo "$pid"
             return 0
@@ -272,7 +273,7 @@ generate_status_message() {
         "running")
             local guardian_pid=$(get_guardian_pid 2>/dev/null || echo "")
             if [[ -n "$guardian_pid" ]]; then
-                local uptime_seconds=$(proot-distro login "$PROOT_DISTRO" -- bash -c "ps -o etimes= -p $guardian_pid 2>/dev/null | head -n1 | awk '{print \$1}'" 2>/dev/null || echo 0)
+                local uptime_seconds=$(ps -o etimes= -p "$guardian_pid" 2>/dev/null | head -n1 | awk '{print $1}' || echo 0)
                 local uptime_minutes=$(( uptime_seconds / 60 ))
                 
                 if [[ $uptime_minutes -lt 5 ]]; then
@@ -457,7 +458,7 @@ fi
 # -----------------------------------------------------------------------------
 GUARDIAN_PID=$(get_guardian_pid || echo "")
 if [[ -n "$GUARDIAN_PID" ]]; then
-    GUARDIAN_UPTIME=$(proot-distro login "$PROOT_DISTRO" -- bash -c "ps -o etimes= -p $GUARDIAN_PID 2>/dev/null | head -n1 | awk '{print \$1}'" 2>/dev/null || echo 0)
+    GUARDIAN_UPTIME=$(ps -o etimes= -p "$GUARDIAN_PID" 2>/dev/null | head -n1 | awk '{print $1}' || echo 0)
     # 确保是数字，移除任何非数字字符
     GUARDIAN_UPTIME=$(echo "$GUARDIAN_UPTIME" | tr -d '\n\r\t ' | grep -o '^[0-9]*' || echo 0)
     GUARDIAN_UPTIME=${GUARDIAN_UPTIME:-0}
@@ -482,13 +483,14 @@ echo "$NOW" > "$LAST_CHECK_FILE"
 # -----------------------------------------------------------------------------
 if [[ -n "$GUARDIAN_PID" ]]; then
     # 使用单次调用获取 CPU 和内存信息
-    PS_OUTPUT=$(proot-distro login "$PROOT_DISTRO" -- bash -c "ps -o pid,pcpu,pmem -p $GUARDIAN_PID 2>/dev/null | tail -n1" || echo "")
+    PS_OUTPUT=$(ps -o pid,pcpu,pmem -p "$GUARDIAN_PID" 2>/dev/null | tail -n1)
     if [[ -n "$PS_OUTPUT" ]]; then
         CPU=$(echo "$PS_OUTPUT" | awk '{print $2}' | head -n1)
         MEM=$(echo "$PS_OUTPUT" | awk '{print $3}' | head -n1)
     else
-        CPU="0.0"
-        MEM="0.0"
+        # 备用方法：使用 top（较慢）
+        CPU=$(top -b -n 1 -p "$GUARDIAN_PID" 2>/dev/null | awk '/'"$GUARDIAN_PID"'/ {print $9}' | head -n1)
+        MEM=$(top -b -n 1 -p "$GUARDIAN_PID" 2>/dev/null | awk '/'"$GUARDIAN_PID"'/ {print $10}' | head -n1)
     fi
     # 确保是数字
     CPU=${CPU:-0.0}
