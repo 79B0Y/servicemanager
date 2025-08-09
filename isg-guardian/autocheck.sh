@@ -161,13 +161,13 @@ get_current_version_fast() {
 # 状态检查函数
 # =============================================================================
 
-# 获取 isg-guardian 进程 PID
+# 获取 iSG App Guardian 进程 PID
 get_guardian_pid() {
-    local pid=$(proot-distro login "$PROOT_DISTRO" -- bash -c "pgrep -f 'isg-guardian' | head -n1" 2>/dev/null || echo "")
+    local pid=$(proot-distro login "$PROOT_DISTRO" -- bash -c "pgrep -f 'iSG App Guardian' | head -n1" 2>/dev/null || echo "")
     
     if [[ -n "$pid" ]]; then
-        # 验证是否为 isg-guardian 相关进程
-        local cmdline=$(proot-distro login "$PROOT_DISTRO" -- bash -c "cat /proc/$pid/cmdline 2>/dev/null | tr '\0' ' ' | grep -i 'isg-guardian'" 2>/dev/null || echo "")
+        # 验证是否为 iSG App Guardian 相关进程
+        local cmdline=$(proot-distro login "$PROOT_DISTRO" -- bash -c "cat /proc/$pid/cmdline 2>/dev/null | tr '\0' ' ' | grep -i 'iSG App Guardian'" 2>/dev/null || echo "")
         if [[ -n "$cmdline" ]]; then
             echo "$pid"
             return 0
@@ -276,31 +276,31 @@ generate_status_message() {
                 local uptime_minutes=$(( uptime_seconds / 60 ))
                 
                 if [[ $uptime_minutes -lt 5 ]]; then
-                    echo "isg-guardian restarted $uptime_minutes minutes ago"
+                    echo "iSG App Guardian restarted $uptime_minutes minutes ago"
                 elif [[ $uptime_minutes -lt 60 ]]; then
-                    echo "isg-guardian running for $uptime_minutes minutes"
+                    echo "iSG App Guardian running for $uptime_minutes minutes"
                 else
                     local uptime_hours=$(( uptime_minutes / 60 ))
-                    echo "isg-guardian running for $uptime_hours hours"
+                    echo "iSG App Guardian running for $uptime_hours hours"
                 fi
             else
-                echo "isg-guardian is running"
+                echo "iSG App Guardian is running"
             fi
             ;;
         "starting")
-            echo "isg-guardian is starting up"
+            echo "iSG App Guardian is starting up"
             ;;
         "stopping")
-            echo "isg-guardian is stopping"
+            echo "iSG App Guardian is stopping"
             ;;
         "stopped")
-            echo "isg-guardian is not running"
+            echo "iSG App Guardian is not running"
             ;;
         "failed")
-            echo "isg-guardian failed to start"
+            echo "iSG App Guardian failed to start"
             ;;
         *)
-            echo "isg-guardian status unknown"
+            echo "iSG App Guardian status unknown"
             ;;
     esac
 }
@@ -434,7 +434,7 @@ fi
 # 检查服务状态并尝试恢复
 # -----------------------------------------------------------------------------
 if [[ "$RUN_STATUS" = "stopped" ]]; then
-    log "isg-guardian not running, attempting to start"
+    log "iSG App Guardian not running, attempting to start"
     for i in $(seq 1 $MAX_TRIES); do
         bash "$SERVICE_DIR/start.sh"
         sleep $RETRY_INTERVAL
