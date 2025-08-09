@@ -99,53 +99,6 @@ record_install_history() {
 ensure_directories
 START_TIME=$(date +%s)
 
-log "开始 isg-guardian 安装流程"
-mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"starting installation process\",\"timestamp\":$(date +%s)}"
-
-# -----------------------------------------------------------------------------
-# 读取服务依赖配置
-# -----------------------------------------------------------------------------
-log "读取服务依赖配置"
-mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"reading service dependencies from serviceupdate.json\",\"timestamp\":$(date +%s)}"
-
-if [ ! -f "$SERVICEUPDATE_FILE" ]; then
-    log "serviceupdate.json 不存在，使用默认依赖"
-    DEPENDENCIES='["python3","python3-pip","python3-venv","python3-dev","build-essential","git","wget","curl","unzip"]'
-else
-    DEPENDENCIES=$(jq -c ".services[] | select(.id==\"$SERVICE_ID\") | .install_dependencies // [\"python3\",\"python3-pip\",\"python3-venv\",\"python3-dev\",\"build-essential\",\"git\",\"wget\",\"curl\",\"unzip\"]" "$SERVICEUPDATE_FILE" 2>/dev/null || echo '["python3","python3-pip","python3-venv","python3-dev","build-essential","git","wget","curl","unzip"]')
-fi
-
-# 转换为 bash 数组
-if [ "$DEPENDENCIES" != "null" ] && [ -n "$DEPENDENCIES" ]; then
-    readarray -t DEPS_ARRAY < <(echo "$DEPENDENCIES" | jq -r '.[]' 2>/dev/null)
-else
-    DEPS_ARRAY=("python3" "python3-pip" "python3-venv" "python3-dev" "build-essential" "git" "wget" "curl" "unzip")
-fi
-
-# 确保数组不为空
-if [ ${#DEPS_ARRAY[@]} -eq 0 ]; then
-    DEPS_ARRAY=("python3" "python3-pip" "python3-venv" "python3-dev" "build-essential" "git" "wget" "curl" "unzip")
-fi
-
-log "安装系统依赖: ${DEPS_ARRAY[*]}"
-mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"installing required dependencies\",\"dependencies\":$DEPENDENCIES,\"timestamp\":$(date +%s)}"
-
-# -----------------------------------------------------------------------------
-# 安装系统依赖
-# -----------------------------------------------------------------------------
-log "在 proot 容器中安装系统依赖"
-mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"installing system dependencies\",\"timestamp\":$(date +%s)}"
-
-if ! proot-distro login "$PROOT_DISTRO" -- bash -c "
-    apt-get update
-    apt-get install -y ${DEPS_ARRAY[*]}
-"; then
-    log "系统依赖安装失败"
-    mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"dependency installation failed\",\"dependencies\":$DEPENDENCIES,\"timestamp\":$(date +%s)}"
-    record_install_history "FAILED" "unknown"
-    exit 1
-fi
-
 # -----------------------------------------------------------------------------
 # 创建安装目录和 Python 虚拟环境
 # -----------------------------------------------------------------------------
