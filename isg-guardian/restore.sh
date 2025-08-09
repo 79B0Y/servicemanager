@@ -337,3 +337,125 @@ TEMP_RESTORE_DIR="$TERMUX_TMP_DIR/isg-guardian_restore_$$"
 rm -rf "$TEMP_RESTORE_DIR" && mkdir -p "$TEMP_RESTORE_DIR"
 
 if tar -xzf "$FINAL_RESTORE_FILE" -C "$TEMP_RESTORE_DIR"; then
+    log "备份文件解压成功"
+    DATA_DIR_IN_BACKUP=""
+    
+    # 寻找 isg-guardian 目录或相关数据
+    if [ -d "$TEMP_RESTORE_DIR/isg-guardian" ]; then
+        DATA_DIR_IN_BACKUP="isg-guardian"
+    elif [ -f "$TEMP_RESTORE_DIR/isg-guardian-data.tar.gz" ]; then
+        log "发现压缩的数据文件，解压中"
+        tar -xzf "$TEMP_RESTORE_DIR/isg-guardian-data.tar.gz" -C "$TEMP_RESTORE_DIR"
+        if [ -d "$TEMP_RESTORE_DIR/isg-guardian" ]; then
+            DATA_DIR_IN_BACKUP="isg-guardian"
+        fi
+    elif [ -f "$TEMP_RESTORE_DIR/config.yaml" ]; then
+        # 如果找到散落的配置文件，重新组织到 isg-guardian 目录
+        log "重新组织散落的数据文件"
+        mkdir -p "$TEMP_RESTORE_DIR/isg-guardian"
+        mv "$TEMP_RESTORE_DIR"/*.yaml "$TEMP_RESTORE_DIR/isg-guardian/" 2>/dev/null || true
+        mv "$TEMP_RESTORE_DIR"/*.json "$TEMP_RESTORE_DIR/isg-guardian/" 2>/dev/null || true
+        mv "$TEMP_RESTORE_DIR"/*.log "$TEMP_RESTORE_DIR/isg-guardian/" 2>/dev/null || true
+        DATA_DIR_IN_BACKUP="isg-guardian"
+    else
+        # 寻找可能的数据文件路径
+        DATA_PATH=$(find "$TEMP_RESTORE_DIR" -name "config.yaml" -o -name "isg-guardian" | head -n1)
+        if [ -n "$DATA_PATH" ]; then
+            if [ -f "$DATA_PATH" ]; then
+                DATA_DIR_IN_BACKUP=$(dirname "$DATA_PATH" | sed "s|$TEMP_RESTORE_DIR/||")
+            else
+                DATA_DIR_IN_BACKUP=$(echo "$DATA_PATH" | sed "s|$TEMP_RESTORE_DIR/||")
+            fi
+        fi
+    fi
+    
+    if [ -n "$DATA_DIR_IN_BACKUP" ]; then
+        log "还原数据文件到 $GUARDIAN_DATA_DIR"
+        
+        # 清理现有数据目录
+        proot-distro login "$PROOT_DISTRO" -- bash -c "
+            rm -rf '$GUARDIAN_DATA_DIR'
+            mkdir -p '$(dirname $GUARDIAN_DATA_DIR)'
+        "
+        
+        # 使用 Termux 专用临时目录传输数据
+        TERMUX_RESTORE_TEMP="$TERMUX_TMP_DIR/isg-guardian-restore-$"
+        mkdir -p "$TERMUX_RESTORE_TEMP"
+        cp -r "$TEMP_RESTORE_DIR/$DATA_DIR_IN_BACKUP" "$TERMUX_RESTORE_TEMP/"
+        
+        # 将数据复制到容器内的正确位置
+        proot-distro login "$PROOT_DISTRO" -- bash -c "
+            mkdir -p '/tmp'
+            cp -r '$TERMUX_RESTORE_TEMP/$(basename $DATA_DIR_IN_BACKUP)' '/tmp/isg-guardian-restore'
+            mv '/tmp/isg-guardian-restore' '$GUARDIAN_DATA_DIR'
+            
+            # 确保目录权限正确
+            chmod -R 755 '$GUARDIAN_DATA_DIR' 2>/dev/null || true
+            
+            # 验证关键文件
+            if [ -f '$GUARDIAN_CONFIG_FILE' ]; then
+                echo 'config.yaml 文件已还原'
+            else
+                echo '警告: config.yaml 文件未找到'
+            fi
+        "
+        
+        rm -rf "$TERMUX_RESTORE_TEMP"
+        log "数据文件还原完成"
+    else
+        log "备份中未找到有效的数据目录，生成默认配置"
+        generate_default_config
+    fi
+    rm -rf "$TEMP_RESTORE_DIR"
+    
+    log "还原完成，重启服务"
+    bash "$SERVICE_DIR/start.sh"
+    MAX_WAIT=120
+    INTERVAL=5
+    WAITED=0
+    log "等待服务启动完成"
+    while [ "$WAITED" -lt "$MAX_WAIT" ]; do
+        if bash "$SERVICE_DIR/status.sh" --quiet; then
+            log "服务启动成功，耗时 ${WAITED}s"
+            break
+        fi
+        sleep "$INTERVAL"
+        WAITED=$((WAITED + INTERVAL))
+    done
+    
+    if bash "$SERVICE_DIR/status.sh" --quiet; then
+        END_TIME=$(date +%s)
+        DURATION=$((END_TIME - START_TIME))
+        SIZE_KB=$(du -k "$FINAL_RESTORE_FILE" | awk '{print $1}')
+        if [ "$CONVERTED_FROM_ZIP" = true ]; then
+            mqtt_report "isg/restore/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"success\",\"method\":\"$METHOD\",\"original_file\":\"$(basename "$RESTORE_FILE")\",\"restore_file\":\"$(basename "$FINAL_RESTORE_FILE")\",\"size_kb\":$SIZE_KB,\"duration\":$DURATION,\"converted_from_zip\":true,\"timestamp\":$END_TIME}"
+            log "还原 + 重启完成: $(basename "$FINAL_RESTORE_FILE") ($SIZE_KB KB, ${DURATION}s)"
+            log "转换自: $(basename "$RESTORE_FILE")"
+        else
+            mqtt_report "isg/restore/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"success\",\"method\":\"$METHOD\",\"file\":\"$(basename "$FINAL_RESTORE_FILE")\",\"size_kb\":$SIZE_KB,\"duration\":$DURATION,\"timestamp\":$END_TIME}"
+            log "还原 + 重启完成: $(basename "$FINAL_RESTORE_FILE") ($SIZE_KB KB, ${DURATION}s)"
+        fi
+        log "✅ 还原成功"
+        
+        # 验证还原的数据
+        log "验证还原的数据完整性"
+        proot-distro login "$PROOT_DISTRO" -- bash -c "
+            if [ -d '$GUARDIAN_DATA_DIR' ]; then
+                file_count=\$(find '$GUARDIAN_DATA_DIR' -type f 2>/dev/null | wc -l)
+                echo \"还原验证: 数据目录包含 \$file_count 个文件\"
+            fi
+        " >> "$LOG_FILE"
+        
+    else
+        log "还原成功但服务启动失败，耗时 ${MAX_WAIT}s"
+        mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"service failed to start after restore\",\"method\":\"$METHOD\",\"timestamp\":$(date +%s)}"
+        exit 1
+    fi
+else
+    log "备份文件解压失败"
+    rm -rf "$TEMP_RESTORE_DIR"
+    mqtt_report "isg/restore/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"backup file extraction failed\",\"timestamp\":$(date +%s)}"
+    exit 1
+fi
+
+exit 0
