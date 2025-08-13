@@ -73,13 +73,9 @@ mqtt_report() {
 }
 
 get_current_version() {
-    proot-distro login "$PROOT_DISTRO" -- bash -c '
-        if [ -f "/root/android-control/isg-android-control" ]; then
-            cd /root/android-control
-            ./isg-android-control version 2>/dev/null || echo "unknown"
-        else
-            echo "unknown"
-        fi
+    proot-distro login "$PROOT_DISTRO" -- bash -lc '
+        cd /root/android-control
+        isg-android-control version
     ' 2>/dev/null | head -n1 | tr -d '\n\r\t ' || echo "unknown"
 }
 
@@ -165,6 +161,24 @@ fi
 
 # 获取安装的版本
 VERSION_STR=$(get_current_version)
+if [[ "$VERSION_STR" == "unknown" ]]; then
+    # 如果获取失败，尝试直接执行版本命令
+    log "尝试直接获取版本信息"
+    TEMP_VERSION_FILE="/tmp/isg_android_control_install_version_$"
+    if proot-distro login "$PROOT_DISTRO" -- bash -c "
+        cd /root/android-control
+        if [ -f './isg-android-control' ]; then
+            ./isg-android-control version
+        fi
+    " > "$TEMP_VERSION_FILE" 2>/dev/null; then
+        VERSION_STR=$(cat "$TEMP_VERSION_FILE" | head -n1 | tr -d '\n\r\t ')
+        rm -f "$TEMP_VERSION_FILE"
+    else
+        rm -f "$TEMP_VERSION_FILE"
+        VERSION_STR="unknown"
+    fi
+fi
+
 log "isg-android-control 版本: $VERSION_STR"
 
 # -----------------------------------------------------------------------------
