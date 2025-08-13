@@ -96,16 +96,36 @@ check_install_status() {
 }
 
 get_android_control_version() {
-    proot-distro login "$PROOT_DISTRO" -- bash -lc '
-        cd /root/android-control 2>/dev/null || exit 1
-        if command -v isg-android-control >/dev/null 2>&1; then
-            isg-android-control version 2>/dev/null | awk "NR==1{print \$1; exit}"
-        else
-            echo unknown
-        fi
-    ' || echo "unknown"
-}
+  # 版本提取函数（只取第一行 x.y 或 x.y.z）
+  _print_ver() {
+    head -n1 | grep -oE '^[0-9]+(\.[0-9]+){1,2}' || echo unknown
+  }
 
+  # 执行获取版本的逻辑
+  _run() {
+    cd /root/android-control 2>/dev/null || { echo unknown; return; }
+    export PATH="/root/.local/bin:$PATH"
+    for cmd in \
+      "/root/.local/bin/isg-android-control" \
+      "isg-android-control" \
+      "/root/android-control/.venv/bin/isg-android-control" \
+      "/root/android-control/venv/bin/isg-android-control" \
+      "/root/android-control/.venv/bin/python3 -m isg_android_control.run" \
+      "/root/android-control/venv/bin/python3 -m isg_android_control.run" \
+      "/usr/bin/python3 -m isg_android_control.run"
+    do
+      # shellcheck disable=SC2086
+      if $cmd version 2>/dev/null | _print_ver; then return; fi
+    done
+    echo unknown
+  }
+
+  if grep -qa "proot" /proc/1/cmdline 2>/dev/null; then
+    _run
+  else
+    proot-distro login ubuntu -- bash -lc "$(typeset -f _print_ver _run); _run" || echo unknown
+  fi
+}
 # =============================================================================
 # 主流程
 # =============================================================================
