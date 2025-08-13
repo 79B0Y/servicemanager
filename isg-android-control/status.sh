@@ -106,29 +106,30 @@ get_android_control_version() {
         fi
     fi
     
-    # 方法1: 尝试从运行中的进程获取版本
-    if [[ -n "$(get_service_pid 2>/dev/null)" ]]; then
-        local runtime_version=$(proot-distro login "$PROOT_DISTRO" -- bash -c "cd $ANDROID_CONTROL_INSTALL_DIR && ./isg-android-control version 2>/dev/null" 2>/dev/null | head -n1 | tr -d '\n\r\t ')
-        if [[ -n "$runtime_version" && "$runtime_version" != "unknown" ]]; then
-            # 缓存版本到文件
-            echo "$runtime_version" > "$version_file" 2>/dev/null || true
-            echo "$runtime_version"
-            return
+    # 直接尝试获取版本，不分情况
+    local version_output=""
+    
+    # 使用临时文件来避免管道问题
+    local temp_file="/tmp/isg_android_control_version_$"
+    if proot-distro login "$PROOT_DISTRO" -- bash -c "
+        if [ -f '/root/android-control/isg-android-control' ]; then
+            cd /root/android-control
+            ./isg-android-control version
         fi
+    " > "$temp_file" 2>/dev/null; then
+        version_output=$(cat "$temp_file" 2>/dev/null | head -n1 | tr -d '\n\r\t ')
+        rm -f "$temp_file"
+    else
+        rm -f "$temp_file"
     fi
     
-    # 方法2: 尝试从安装目录读取版本
-    if [[ "$(check_install_status)" == "true" ]]; then
-        local installed_version=$(proot-distro login "$PROOT_DISTRO" -- bash -c "cd $ANDROID_CONTROL_INSTALL_DIR && ./isg-android-control version 2>/dev/null" 2>/dev/null | head -n1 | tr -d '\n\r\t ')
-        if [[ -n "$installed_version" && "$installed_version" != "unknown" ]]; then
-            # 缓存版本到文件
-            echo "$installed_version" > "$version_file" 2>/dev/null || true
-            echo "$installed_version"
-            return
-        fi
+    if [[ -n "$version_output" && "$version_output" != "unknown" && "$version_output" != "" ]]; then
+        # 缓存版本到文件
+        echo "$version_output" > "$version_file" 2>/dev/null || true
+        echo "$version_output"
+    else
+        echo "unknown"
     fi
-    
-    echo "unknown"
 }
 
 # =============================================================================
