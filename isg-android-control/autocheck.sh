@@ -133,7 +133,7 @@ get_current_version_fast() {
         fi
     fi
     
-    # 使用标准版本获取方法
+    # 使用标准版本获取方法，抑制proot警告
     local proot_version=$(proot-distro login "$PROOT_DISTRO" -- bash -c '
         if [ -f "/root/android-control/isg-android-control" ]; then
             cd /root/android-control
@@ -141,7 +141,7 @@ get_current_version_fast() {
         else
             echo "unknown"
         fi
-    ' 2>/dev/null || echo "unknown")
+    ' 2>/dev/null | head -n1 | tr -d '\n\r\t ')
     
     if [[ -n "$proot_version" && "$proot_version" != "unknown" ]]; then
         # 缓存版本到文件
@@ -196,7 +196,9 @@ check_install_fast() {
         return
     fi
     
-    if [[ -d "$ANDROID_CONTROL_INSTALL_DIR" && -f "$ANDROID_CONTROL_INSTALL_DIR/isg-android-control" ]]; then
+    # 抑制proot警告，只检查安装目录和可执行文件
+    if proot-distro login "$PROOT_DISTRO" -- test -d "/root/android-control" >/dev/null 2>&1 && \
+       proot-distro login "$PROOT_DISTRO" -- test -f "/root/android-control/isg-android-control" >/dev/null 2>&1; then
         echo "success"
     else
         if [[ -f "$INSTALL_HISTORY_FILE" && -s "$INSTALL_HISTORY_FILE" ]]; then
