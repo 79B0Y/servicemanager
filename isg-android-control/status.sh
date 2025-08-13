@@ -91,14 +91,27 @@ get_service_pid() {
 }
 
 check_install_status() {
-    proot-distro login "$PROOT_DISTRO" -- test -f "$ANDROID_CONTROL_INSTALL_DIR/isg-android-control" && echo "true" || echo "false"
+    # 抑制proot警告，只检查文件是否存在
+    proot-distro login "$PROOT_DISTRO" -- test -f "$ANDROID_CONTROL_INSTALL_DIR/isg-android-control" >/dev/null 2>&1 && echo "true" || echo "false"
 }
 
 get_android_control_version() {
+    # 优先从缓存文件读取版本
+    local version_file="$BASE_DIR/$SERVICE_ID/VERSION"
+    if [[ -f "$version_file" ]]; then
+        local cached_version=$(cat "$version_file" 2>/dev/null | head -n1 | tr -d '\n\r\t ')
+        if [[ -n "$cached_version" && "$cached_version" != "unknown" && "$cached_version" != "v1.0.0" ]]; then
+            echo "$cached_version"
+            return
+        fi
+    fi
+    
     # 方法1: 尝试从运行中的进程获取版本
     if [[ -n "$(get_service_pid 2>/dev/null)" ]]; then
-        local runtime_version=$(proot-distro login "$PROOT_DISTRO" -- bash -c "cd $ANDROID_CONTROL_INSTALL_DIR && ./isg-android-control version" 2>/dev/null | head -n1)
+        local runtime_version=$(proot-distro login "$PROOT_DISTRO" -- bash -c "cd $ANDROID_CONTROL_INSTALL_DIR && ./isg-android-control version 2>/dev/null" 2>/dev/null | head -n1 | tr -d '\n\r\t ')
         if [[ -n "$runtime_version" && "$runtime_version" != "unknown" ]]; then
+            # 缓存版本到文件
+            echo "$runtime_version" > "$version_file" 2>/dev/null || true
             echo "$runtime_version"
             return
         fi
@@ -106,8 +119,10 @@ get_android_control_version() {
     
     # 方法2: 尝试从安装目录读取版本
     if [[ "$(check_install_status)" == "true" ]]; then
-        local installed_version=$(proot-distro login "$PROOT_DISTRO" -- bash -c "cd $ANDROID_CONTROL_INSTALL_DIR && ./isg-android-control version" 2>/dev/null)
+        local installed_version=$(proot-distro login "$PROOT_DISTRO" -- bash -c "cd $ANDROID_CONTROL_INSTALL_DIR && ./isg-android-control version 2>/dev/null" 2>/dev/null | head -n1 | tr -d '\n\r\t ')
         if [[ -n "$installed_version" && "$installed_version" != "unknown" ]]; then
+            # 缓存版本到文件
+            echo "$installed_version" > "$version_file" 2>/dev/null || true
             echo "$installed_version"
             return
         fi
