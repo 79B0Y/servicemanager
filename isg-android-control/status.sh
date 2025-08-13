@@ -123,7 +123,7 @@ get_android_control_version() {
   if grep -qa "proot" /proc/1/cmdline 2>/dev/null; then
     _run
   else
-    proot-distro login ubuntu -- bash -lc "$(typeset -f _print_ver _run); _run" || echo unknown
+    PROOT_NO_SECCOMP=1 proot-distro login ubuntu -- bash -lc "$(typeset -f _print_ver _run); _run" 2>/dev/null || echo unknown
   fi
 }
 # =============================================================================
