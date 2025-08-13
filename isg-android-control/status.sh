@@ -96,10 +96,14 @@ check_install_status() {
 }
 
 get_android_control_version() {
-   proot-distro login "$PROOT_DISTRO" -- bash -lc '
-        cd /root/android-control
-        isg-android-control version
-    ' 2>/dev/null | head -n1 | tr -d '\n\r\t ' || echo "unknown"
+    proot-distro login "$PROOT_DISTRO" -- bash -lc '
+        cd /root/android-control 2>/dev/null || exit 1
+        if command -v isg-android-control >/dev/null 2>&1; then
+            isg-android-control version 2>/dev/null | awk "NR==1{print \$1; exit}"
+        else
+            echo unknown
+        fi
+    ' || echo "unknown"
 }
 
 # =============================================================================
