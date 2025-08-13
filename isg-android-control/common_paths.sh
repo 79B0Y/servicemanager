@@ -147,7 +147,7 @@ get_android_control_version() {
         else
             echo "unknown"
         fi
-    ' 2>/dev/null || echo "unknown"
+    ' 2>/dev/null | head -n1 | tr -d '\n\r\t ' || echo "unknown"
 }
 
 # =============================================================================
