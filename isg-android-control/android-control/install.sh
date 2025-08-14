@@ -107,11 +107,11 @@ done
 
 START_NOW="${START_NOW:-1}"
 if [ "$START_NOW" = "1" ]; then
-  echo "[i] Starting service via isg-android-control start"
-  PATH="$HOME/.local/bin:$PATH" isg-android-control start || true
-  echo "Use 'isg-android-control logs' to view logs."
+  echo "[i] Starting service via isg-android-control daemon"
+  PATH="$HOME/.local/bin:$PATH" isg-android-control daemon || true
+  echo "Use 'isg-android-control logs' to view logs (background)."
 else
-  echo "[i] Skipping auto-start (START_NOW=0). You can run: isg-android-control start"
+  echo "[i] Skipping auto-start (START_NOW=0). You can run: isg-android-control start (foreground) or isg-android-control daemon (background)"
 fi
 
 echo "[OK] Install complete."
