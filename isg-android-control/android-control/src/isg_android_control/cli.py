@@ -11,7 +11,9 @@ from .models.config import Settings
 import socket
 
 
-BASE_DIR = Path.cwd()
+# Resolve project root from this file location to avoid CWD-dependent paths
+# cli.py path: <project_root>/src/isg_android_control/cli.py
+BASE_DIR = Path(__file__).resolve().parents[2]
 VAR_DIR = BASE_DIR / "var"
 LOG_DIR = VAR_DIR / "log"
 RUN_DIR = VAR_DIR / "run"
@@ -98,7 +100,7 @@ def cmd_status() -> int:
         print(f"running (pid {pid})")
         return 0
     except ProcessLookupError:
-        print("stale pid file; removing")
+        print(f"stale pid file; removing ({PID_FILE})")
         PID_FILE.unlink(missing_ok=True)
         return 3
 
