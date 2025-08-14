@@ -133,21 +133,25 @@ get_current_version_fast() {
         fi
     fi
     
-    # 使用标准版本获取方法，抑制proot警告
-    local proot_version=$(proot-distro login "$PROOT_DISTRO" -- bash -c '
-        if [ -f "/root/android-control/isg-android-control" ]; then
-            cd /root/android-control
-            ./isg-android-control version 2>/dev/null || echo "unknown"
+    # 使用临时文件避免管道导致的文件描述符问题
+    local temp_file="/data/data/com.termux/files/usr/tmp/isg_version_$"
+    mkdir -p "/data/data/com.termux/files/usr/tmp"
+    
+    if proot-distro login "$PROOT_DISTRO" -- bash -lc '
+        /root/.local/bin/isg-android-control version
+    ' > "$temp_file" 2>/dev/null; then
+        local proot_version=$(cat "$temp_file" | head -n1 | tr -d '\n\r\t ')
+        rm -f "$temp_file"
+        
+        if [[ -n "$proot_version" && "$proot_version" != "unknown" ]]; then
+            # 缓存版本到文件
+            echo "$proot_version" > "$VERSION_CACHE_FILE" 2>/dev/null || true
+            echo "$proot_version"
         else
             echo "unknown"
         fi
-    ' 2>/dev/null | head -n1 | tr -d '\n\r\t ')
-    
-    if [[ -n "$proot_version" && "$proot_version" != "unknown" ]]; then
-        # 缓存版本到文件
-        echo "$proot_version" > "$VERSION_CACHE_FILE" 2>/dev/null || true
-        echo "$proot_version"
     else
+        rm -f "$temp_file"
         echo "unknown"
     fi
 }
@@ -196,9 +200,8 @@ check_install_fast() {
         return
     fi
     
-    # 抑制proot警告，只检查安装目录和可执行文件
-    if proot-distro login "$PROOT_DISTRO" -- test -d "/root/android-control" >/dev/null 2>&1 && \
-       proot-distro login "$PROOT_DISTRO" -- test -f "/root/android-control/isg-android-control" >/dev/null 2>&1; then
+    # 抑制proot警告，检查安装目录
+    if proot-distro login "$PROOT_DISTRO" -- test -d "/root/android-control" >/dev/null 2>&1; then
         echo "success"
     else
         if [[ -f "$INSTALL_HISTORY_FILE" && -s "$INSTALL_HISTORY_FILE" ]]; then
