@@ -140,14 +140,20 @@ get_formatted_time() {
 get_android_control_version() {
     local proot_distro="${PROOT_DISTRO:-ubuntu}"
     
-    proot-distro login "$proot_distro" -- bash -c '
-        if [ -f "/root/android-control/isg-android-control" ]; then
-            cd /root/android-control
-            ./isg-android-control version 2>/dev/null || echo "unknown"
-        else
-            echo "unknown"
-        fi
-    ' 2>/dev/null | head -n1 | tr -d '\n\r\t ' || echo "unknown"
+    # 使用临时文件避免管道导致的文件描述符问题
+    local temp_file="/data/data/com.termux/files/usr/tmp/isg_version_$"
+    mkdir -p "/data/data/com.termux/files/usr/tmp"
+    
+    if proot-distro login "$proot_distro" -- bash -lc '
+        /root/.local/bin/isg-android-control version
+    ' > "$temp_file" 2>/dev/null; then
+        local version=$(cat "$temp_file" | head -n1 | tr -d '\n\r\t ')
+        rm -f "$temp_file"
+        echo "${version:-unknown}"
+    else
+        rm -f "$temp_file"
+        echo "unknown"
+    fi
 }
 
 # =============================================================================
