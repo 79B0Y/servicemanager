@@ -73,10 +73,20 @@ mqtt_report() {
 }
 
 get_current_version() {
-    proot-distro login "$PROOT_DISTRO" -- bash -lc '
-        cd /root/android-control
-        isg-android-control version
-    ' 2>/dev/null | head -n1 | tr -d '\n\r\t ' || echo "unknown"
+    # 使用临时文件避免管道导致的文件描述符问题
+    local temp_file="/data/data/com.termux/files/usr/tmp/isg_version_$"
+    mkdir -p "/data/data/com.termux/files/usr/tmp"
+    
+    if proot-distro login "$PROOT_DISTRO" -- bash -lc '
+        /root/.local/bin/isg-android-control version
+    ' > "$temp_file" 2>/dev/null; then
+        local version=$(cat "$temp_file" | head -n1 | tr -d '\n\r\t ')
+        rm -f "$temp_file"
+        echo "${version:-unknown}"
+    else
+        rm -f "$temp_file"
+        echo "unknown"
+    fi
 }
 
 record_install_history() {
@@ -242,7 +252,8 @@ cat << 'EOF' > "$RUN_FILE"
 # 启动 isg-android-control
 exec proot-distro login ubuntu -- bash -lc '
     set -e
-    /root/.local/bin/isg-android-control start
+    cd /root/android-control
+    isg-android-control start
 '
 EOF
 
