@@ -1,0 +1,14 @@
+adb_host: 127.0.0.1
+adb_port: 5555
+adb_serial: ""  # optional; set to override host:port
+screenshots_dir: var/screenshots
+logs_dir: var/log
+run_dir: var/run
+has_battery: false
+has_cellular: false
+camera_enabled: true
+camera_interval: 10  # deprecated; use screenshot_interval
+screenshot_interval: 10
+screenshot_keep: 3
+device_id: isg_android_controller
+device_name: ISG Android Controller
