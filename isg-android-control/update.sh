@@ -60,9 +60,20 @@ mqtt_report() {
 }
 
 get_android_control_version() {
-    proot-distro login ubuntu -- bash -lc '
+    # 使用临时文件避免管道导致的文件描述符问题
+    local temp_file="/data/data/com.termux/files/usr/tmp/isg_version_$"
+    mkdir -p "/data/data/com.termux/files/usr/tmp"
+    
+    if proot-distro login ubuntu -- bash -lc '
         /root/.local/bin/isg-android-control version
-    ' 2>/dev/null | head -n1 | tr -d '\n\r\t ' || echo "unknown"
+    ' > "$temp_file" 2>/dev/null; then
+        local version=$(cat "$temp_file" | head -n1 | tr -d '\n\r\t ')
+        rm -f "$temp_file"
+        echo "${version:-unknown}"
+    else
+        rm -f "$temp_file"
+        echo "unknown"
+    fi
 }
 
 get_latest_version() {
