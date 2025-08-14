@@ -242,8 +242,7 @@ cat << 'EOF' > "$RUN_FILE"
 # 启动 isg-android-control
 exec proot-distro login ubuntu -- bash -lc '
     set -e
-    cd /root/android-control
-    isg-android-control start
+    /root/.local/bin/isg-android-control start
 '
 EOF
 
