@@ -96,9 +96,9 @@ check_install_status() {
 }
 
 get_android_control_version() {
-  proot-distro login ubuntu -- bash -lc '
+    proot-distro login ubuntu -- bash -lc '
 /root/.local/bin/isg-android-control version
-'
+' 2>/dev/null
 }
 # =============================================================================
 # 主流程
