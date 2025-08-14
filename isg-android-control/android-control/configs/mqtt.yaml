@@ -1,7 +1,0 @@
-host: 127.0.0.1
-port: 1883
-username: ""
-password: ""
-discovery_prefix: homeassistant
-base_topic: isg/android
-
