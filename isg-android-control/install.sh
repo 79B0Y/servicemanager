@@ -192,52 +192,6 @@ fi
 log "isg-android-control 版本: $VERSION_STR"
 
 # -----------------------------------------------------------------------------
-# 生成初始配置文件
-# -----------------------------------------------------------------------------
-log "生成初始配置文件"
-mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"generating initial configuration\",\"timestamp\":$(date +%s)}"
-
-# 获取 MQTT 配置
-load_mqtt_conf
-
-proot-distro login "$PROOT_DISTRO" -- bash -c "
-    cd /root/android-control
-    mkdir -p config
-    
-    # 生成 MQTT 配置文件
-    cat > config/mqtt.yaml << EOF
-mqtt:
-  host: '$MQTT_HOST'
-  port: $MQTT_PORT
-  username: '$MQTT_USER'
-  password: '$MQTT_PASS'
-  keepalive: 60
-  qos: 1
-EOF
-
-    # 生成基础应用配置文件
-    cat > config/apps.yaml << EOF
-apps:
-  - name: 'example_app'
-    package: 'com.example.app'
-    enabled: true
-    auto_start: false
-    priority: 1
-EOF
-
-    # 生成设备配置文件
-    cat > config/device.yaml << EOF
-device:
-  name: 'android-control-device'
-  id: 'android-ctrl-001'
-  type: 'controller'
-  capabilities:
-    - 'app_management'
-    - 'system_control'
-EOF
-"
-
-# -----------------------------------------------------------------------------
 # 注册 servicemonitor 服务看护
 # -----------------------------------------------------------------------------
 log "注册 servicemonitor 服务"
