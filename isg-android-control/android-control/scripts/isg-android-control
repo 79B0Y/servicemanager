@@ -1,5 +1,0 @@
-#!/usr/bin/env bash
-set -euo pipefail
-PY=${PYTHON:-python3}
-export PYTHONPATH="$(pwd)/src:${PYTHONPATH:-}"
-exec "$PY" -m isg_android_control.cli "$@"
