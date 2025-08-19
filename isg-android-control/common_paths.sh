@@ -120,43 +120,6 @@ cleanup_temp() {
 }
 
 # =============================================================================
-# 函数：获取当前时间戳
-# =============================================================================
-get_timestamp() {
-    date +%s
-}
-
-# =============================================================================
-# 函数：获取格式化时间
-# =============================================================================
-get_formatted_time() {
-    date '+%Y-%m-%d %H:%M:%S'
-}
-
-# =============================================================================
-# 函数：标准版本获取
-# =============================================================================
-# 获取 isg-android-control 版本
-get_android_control_version() {
-    local proot_distro="${PROOT_DISTRO:-ubuntu}"
-    
-    # 使用临时文件避免管道导致的文件描述符问题
-    local temp_file="/data/data/com.termux/files/usr/tmp/isg_version_$"
-    mkdir -p "/data/data/com.termux/files/usr/tmp"
-    
-    if proot-distro login "$proot_distro" -- bash -lc '
-        /root/.local/bin/isg-android-control version
-    ' > "$temp_file" 2>/dev/null; then
-        local version=$(cat "$temp_file" | head -n1 | tr -d '\n\r\t ')
-        rm -f "$temp_file"
-        echo "${version:-unknown}"
-    else
-        rm -f "$temp_file"
-        echo "unknown"
-    fi
-}
-
-# =============================================================================
 # 版本信息
 # =============================================================================
 SCRIPT_VERSION="1.0.0"
