@@ -2,7 +2,7 @@
 # =============================================================================
 # isg-android-control 自检脚本
 # 版本: v1.0.0
-# 功能: 单服务自检与性能监控
+# 功能: 单服务自检与性能监控，配置同步
 # =============================================================================
 
 set -euo pipefail
@@ -24,22 +24,17 @@ VERSION_FILE="$SERVICE_DIR/VERSION"
 PROOT_DISTRO="${PROOT_DISTRO:-ubuntu}"
 PROOT_ROOTFS="/data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/$PROOT_DISTRO"
 ANDROID_CONTROL_INSTALL_DIR="$PROOT_ROOTFS/root/android-control"
-ANDROID_CONTROL_CONFIG_DIR="$PROOT_ROOTFS/root/android-control/config"
-ANDROID_CONTROL_MQTT_CONFIG="$PROOT_ROOTFS/root/android-control/config/mqtt.yaml"
-ANDROID_CONTROL_APPS_CONFIG="$PROOT_ROOTFS/root/android-control/config/apps.yaml"
+ANDROID_CONTROL_CONFIG_DIR="$PROOT_ROOTFS/root/android-control/configs"
+ANDROID_CONTROL_MQTT_CONFIG="$PROOT_ROOTFS/root/android-control/configs/mqtt.yaml"
+ANDROID_CONTROL_APPS_CONFIG="$PROOT_ROOTFS/root/android-control/configs/apps.yaml"
+ANDROID_CONTROL_DEVICE_CONFIG="$PROOT_ROOTFS/root/android-control/configs/device.yaml"
 
 # 日志和状态文件
 LOG_DIR="$SERVICE_DIR/logs"
 LOG_FILE="$LOG_DIR/autocheck.log"
-VERSION_CACHE_FILE="$SERVICE_DIR/VERSION"
 LOCK_FILE_AUTOCHECK="$SERVICE_DIR/.lock_autocheck"
 LAST_CHECK_FILE="$SERVICE_DIR/.lastcheck"
 DISABLED_FLAG="$SERVICE_DIR/.disabled"
-
-# 备份和历史记录
-BACKUP_DIR="${BACKUP_DIR:-/sdcard/isgbackup/$SERVICE_ID}"
-INSTALL_HISTORY_FILE="$BACKUP_DIR/.install_history"
-UPDATE_HISTORY_FILE="$BACKUP_DIR/.update_history"
 
 # 脚本参数
 MAX_TRIES="${MAX_TRIES:-3}"
@@ -52,7 +47,7 @@ RETRY_INTERVAL="${RETRY_INTERVAL:-60}"
 # 确保必要目录存在
 ensure_directories() {
     mkdir -p "$LOG_DIR" 2>/dev/null || true
-    mkdir -p "$BACKUP_DIR" 2>/dev/null || true
+    mkdir -p "$ANDROID_CONTROL_CONFIG_DIR" 2>/dev/null || true
 }
 
 # 统一日志记录
@@ -92,6 +87,172 @@ mqtt_report() {
 }
 
 # =============================================================================
+# 配置同步函数
+# =============================================================================
+
+# 更新 MQTT 配置
+sync_mqtt_config() {
+    log "同步 MQTT 配置"
+    
+    if [[ ! -f "$CONFIG_FILE" ]]; then
+        log "未找到主配置文件，跳过 MQTT 配置同步"
+        return 0
+    fi
+    
+    load_mqtt_conf
+    
+    # 创建或更新 mqtt.yaml
+    cat > "$ANDROID_CONTROL_MQTT_CONFIG" << MQTTEOF
+host: $MQTT_HOST
+port: $MQTT_PORT_CONFIG
+username: "$MQTT_USER"
+password: "$MQTT_PASS"
+discovery_prefix: homeassistant
+base_topic: isg/android
+MQTTEOF
+    
+    log "MQTT 配置已更新: host=$MQTT_HOST, port=$MQTT_PORT_CONFIG, user=$MQTT_USER"
+    return 0
+}
+
+# 更新应用列表配置
+sync_apps_config() {
+    log "同步应用列表配置"
+    
+    if [[ ! -f "$SERVICEUPDATE_FILE" ]]; then
+        log "未找到 serviceupdate.json，跳过应用配置同步"
+        return 0
+    fi
+    
+    # 从 serviceupdate.json 的 config 字段中获取应用列表
+    local apps_json
+    apps_json=$(jq -r ".services[] | select(.id==\"$SERVICE_ID\") | .config.Apps // {}" "$SERVICEUPDATE_FILE" 2>/dev/null)
+    
+    if [[ "$apps_json" == "{}" || "$apps_json" == "null" ]]; then
+        log "serviceupdate.json.config 中未找到应用列表，使用默认配置"
+        # 使用默认应用配置
+        cat > "$ANDROID_CONTROL_APPS_CONFIG" << APPSEOF
+apps:
+  Home Assistant: io.homeassistant.companion.android
+  YouTube: com.google.android.youtube
+  Spotify: com.spotify.music
+  iSG: com.linknlink.app.device.isg
+# Optional: limit the dropdown options shown in HA
+# If omitted or empty, all keys from 'apps' will be shown.
+visible:
+  - Home Assistant
+  - YouTube
+  - Spotify
+  - iSG
+APPSEOF
+        return 0
+    fi
+    
+    # 构建 apps.yaml 内容
+    local apps_yaml="apps:\n"
+    local visible_yaml="visible:\n"
+    
+    # 解析 JSON 并生成 YAML
+    local app_names
+    app_names=$(echo "$apps_json" | jq -r 'keys[]' 2>/dev/null)
+    
+    if [[ -n "$app_names" ]]; then
+        while IFS= read -r app_name; do
+            local package_name
+            package_name=$(echo "$apps_json" | jq -r ".[\"$app_name\"]" 2>/dev/null)
+            apps_yaml="${apps_yaml}  $app_name: $package_name\n"
+            visible_yaml="${visible_yaml}  - $app_name\n"
+        done <<< "$app_names"
+        
+        # 写入配置文件
+        {
+            echo -e "$apps_yaml"
+            echo "# Optional: limit the dropdown options shown in HA"
+            echo "# If omitted or empty, all keys from 'apps' will be shown."
+            echo -e "$visible_yaml"
+        } > "$ANDROID_CONTROL_APPS_CONFIG"
+        
+        log "应用配置已更新，包含 $(echo "$app_names" | wc -l) 个应用"
+    else
+        log "应用列表为空，保持现有配置"
+    fi
+    
+    return 0
+}
+
+# 更新设备配置
+sync_device_config() {
+    log "同步设备配置"
+    
+    # 获取当前的 screenshot_interval 设置
+    local new_screenshot_interval=10  # 默认值
+    
+    if [[ -f "$SERVICEUPDATE_FILE" ]]; then
+        # 从 serviceupdate.json 中读取 screenshot_interval
+        local interval_from_json
+        interval_from_json=$(jq -r ".services[] | select(.id==\"$SERVICE_ID\") | .screenshot_interval // 10" "$SERVICEUPDATE_FILE" 2>/dev/null)
+        
+        if [[ "$interval_from_json" != "null" && "$interval_from_json" =~ ^[0-9]+$ ]]; then
+            new_screenshot_interval="$interval_from_json"
+            log "从 serviceupdate.json 读取到 screenshot_interval: $new_screenshot_interval"
+        else
+            log "serviceupdate.json 中未找到有效的 screenshot_interval，使用默认值: $new_screenshot_interval"
+        fi
+    else
+        log "未找到 serviceupdate.json，使用默认 screenshot_interval: $new_screenshot_interval"
+    fi
+    
+    # 检查是否存在现有的 device.yaml 文件
+    if [[ -f "$ANDROID_CONTROL_DEVICE_CONFIG" ]]; then
+        log "更新现有的 device.yaml 文件"
+        
+        # 备份原文件
+        cp "$ANDROID_CONTROL_DEVICE_CONFIG" "$ANDROID_CONTROL_DEVICE_CONFIG.backup.$(date +%s)" 2>/dev/null || true
+        
+        # 读取现有配置并更新 screenshot_interval
+        local temp_file="/tmp/device_config_update_$$"
+        
+        # 使用 sed 更新 screenshot_interval，保持其他配置不变
+        sed "s/^screenshot_interval:.*$/screenshot_interval: $new_screenshot_interval/" "$ANDROID_CONTROL_DEVICE_CONFIG" > "$temp_file"
+        
+        # 检查是否找到并替换了 screenshot_interval
+        if grep -q "^screenshot_interval: $new_screenshot_interval$" "$temp_file"; then
+            mv "$temp_file" "$ANDROID_CONTROL_DEVICE_CONFIG"
+            log "已更新 device.yaml 中的 screenshot_interval 为: $new_screenshot_interval"
+        else
+            # 如果没有找到 screenshot_interval 行，则添加它
+            echo "screenshot_interval: $new_screenshot_interval" >> "$ANDROID_CONTROL_DEVICE_CONFIG"
+            rm -f "$temp_file"
+            log "已添加 screenshot_interval 配置到 device.yaml: $new_screenshot_interval"
+        fi
+    else
+        log "创建新的 device.yaml 文件"
+        
+        # 创建默认的 device.yaml 配置
+        cat > "$ANDROID_CONTROL_DEVICE_CONFIG" << DEVICEEOF
+adb_host: 10.0.0.227
+adb_port: 5555
+adb_serial: ""  # optional; set to override host:port
+screenshots_dir: var/screenshots
+logs_dir: var/log
+run_dir: var/run
+has_battery: false
+has_cellular: false
+camera_enabled: true
+camera_interval: $new_screenshot_interval  # deprecated; use screenshot_interval
+screenshot_interval: $new_screenshot_interval
+screenshot_keep: 3
+device_id: isg_android_controller
+device_name: ISG Android Controller
+DEVICEEOF
+        
+        log "已创建新的 device.yaml 文件，screenshot_interval: $new_screenshot_interval"
+    fi
+    
+    return 0
+}
+
+# =============================================================================
 # 版本信息获取函数
 # =============================================================================
 
@@ -104,29 +265,11 @@ get_latest_version() {
     fi
 }
 
-# 获取脚本版本
-get_script_version() {
-    if [[ -f "$VERSION_CACHE_FILE" ]]; then
-        cat "$VERSION_CACHE_FILE" 2>/dev/null | head -n1 | tr -d '\n\r\t ' || echo "v1.0.0"
-    else
-        echo "v1.0.0"
-    fi
-}
-
-# 获取最新脚本版本
-get_latest_script_version() {
-    if [[ -f "$SERVICEUPDATE_FILE" ]]; then
-        jq -r ".services[] | select(.id==\"$SERVICE_ID\") | .latest_script_version" "$SERVICEUPDATE_FILE" 2>/dev/null || echo "unknown"
-    else
-        echo "unknown"
-    fi
-}
-
 # 快速获取 isg-android-control 版本
 get_current_version_fast() {
     # 优先从缓存文件读取
-    if [[ -f "$VERSION_CACHE_FILE" ]]; then
-        local cached_version=$(cat "$VERSION_CACHE_FILE" 2>/dev/null | head -n1 | tr -d '\n\r\t ')
+    if [[ -f "$VERSION_FILE" ]]; then
+        local cached_version=$(cat "$VERSION_FILE" 2>/dev/null | head -n1 | tr -d '\n\r\t ')
         if [[ -n "$cached_version" && "$cached_version" != "unknown" && "$cached_version" != "v1.0.0" ]]; then
             echo "$cached_version"
             return
@@ -134,7 +277,7 @@ get_current_version_fast() {
     fi
     
     # 使用临时文件避免管道导致的文件描述符问题
-    local temp_file="/data/data/com.termux/files/usr/tmp/isg_version_$"
+    local temp_file="/data/data/com.termux/files/usr/tmp/isg_version_$$"
     mkdir -p "/data/data/com.termux/files/usr/tmp"
     
     if proot-distro login "$PROOT_DISTRO" -- bash -lc '
@@ -145,7 +288,7 @@ get_current_version_fast() {
         
         if [[ -n "$proot_version" && "$proot_version" != "unknown" ]]; then
             # 缓存版本到文件
-            echo "$proot_version" > "$VERSION_CACHE_FILE" 2>/dev/null || true
+            echo "$proot_version" > "$VERSION_FILE" 2>/dev/null || true
             echo "$proot_version"
         else
             echo "unknown"
@@ -204,43 +347,8 @@ check_install_fast() {
     if proot-distro login "$PROOT_DISTRO" -- test -d "/root/android-control" >/dev/null 2>&1; then
         echo "success"
     else
-        if [[ -f "$INSTALL_HISTORY_FILE" && -s "$INSTALL_HISTORY_FILE" ]]; then
-            local last_install_line=$(tail -n1 "$INSTALL_HISTORY_FILE" 2>/dev/null)
-            if [[ -n "$last_install_line" ]]; then
-                if echo "$last_install_line" | grep -q "UNINSTALL SUCCESS"; then
-                    echo "uninstalled"
-                    return
-                elif echo "$last_install_line" | grep -q "INSTALL FAILED"; then
-                    echo "failed"
-                    return
-                fi
-            fi
-        fi
         echo "never"
     fi
-}
-
-# 改进的 BACKUP 状态检查
-get_improved_backup_status() {
-    # isg-android-control 没有备份功能，始终返回 never
-    echo "never"
-}
-
-# 改进的 UPDATE 状态检查
-get_improved_update_status() {
-    # isg-android-control 没有升级功能，始终返回 never
-    echo "never"
-}
-
-# 改进的 RESTORE 状态检查
-get_improved_restore_status() {
-    # isg-android-control 没有恢复功能，始终返回 never
-    echo "never"
-}
-
-# 获取更新信息摘要
-get_update_info() {
-    echo "no updates supported"
 }
 
 # 生成状态消息
@@ -290,23 +398,36 @@ get_config_info_fast() {
     
     # 尝试读取 MQTT 配置
     if [[ -f "$ANDROID_CONTROL_MQTT_CONFIG" ]]; then
-        local mqtt_host=$(grep -A5 'mqtt:' "$ANDROID_CONTROL_MQTT_CONFIG" 2>/dev/null | grep 'host:' | sed -E 's/.*host: *['"'"'"](.*)['"'"'"]/\1/' || echo "")
-        local mqtt_port=$(grep -A5 'mqtt:' "$ANDROID_CONTROL_MQTT_CONFIG" 2>/dev/null | grep 'port:' | sed -E 's/.*port: *([0-9]+).*/\1/' || echo "")
+        local mqtt_host=$(grep 'host:' "$ANDROID_CONTROL_MQTT_CONFIG" 2>/dev/null | sed -E 's/.*host: *([^[:space:]]+).*/\1/' || echo "")
+        local mqtt_port=$(grep 'port:' "$ANDROID_CONTROL_MQTT_CONFIG" 2>/dev/null | sed -E 's/.*port: *([0-9]+).*/\1/' || echo "")
         
-        config_json=$(cat << EOF
+        config_json=$(cat << CONFIGEOF
 {
   "mqtt_host": "$mqtt_host",
   "mqtt_port": "$mqtt_port",
-  "config_path": "/root/android-control/config/"
+  "config_path": "/root/android-control/configs/"
 }
-EOF
+CONFIGEOF
 )
     fi
     
     # 尝试读取应用列表
     if [[ -f "$ANDROID_CONTROL_APPS_CONFIG" ]]; then
-        local apps_count=$(grep -c '^[[:space:]]*-[[:space:]]*name:' "$ANDROID_CONTROL_APPS_CONFIG" 2>/dev/null || echo 0)
+        local apps_count=$(grep -c '^[[:space:]]*[A-Za-z].*:' "$ANDROID_CONTROL_APPS_CONFIG" 2>/dev/null || echo 0)
         config_json=$(echo "$config_json" | jq --argjson count "$apps_count" '. + {apps_count: $count}' 2>/dev/null || echo "$config_json")
+    fi
+    
+    # 尝试读取设备配置
+    if [[ -f "$ANDROID_CONTROL_DEVICE_CONFIG" ]]; then
+        local screenshot_interval=$(grep 'screenshot_interval:' "$ANDROID_CONTROL_DEVICE_CONFIG" 2>/dev/null | sed -E 's/.*screenshot_interval: *([0-9]+).*/\1/' || echo "")
+        local adb_host=$(grep 'adb_host:' "$ANDROID_CONTROL_DEVICE_CONFIG" 2>/dev/null | sed -E 's/.*adb_host: *([^[:space:]]+).*/\1/' || echo "")
+        local device_id=$(grep 'device_id:' "$ANDROID_CONTROL_DEVICE_CONFIG" 2>/dev/null | sed -E 's/.*device_id: *([^[:space:]]+).*/\1/' || echo "")
+        
+        config_json=$(echo "$config_json" | jq \
+            --arg interval "$screenshot_interval" \
+            --arg host "$adb_host" \
+            --arg id "$device_id" \
+            '. + {screenshot_interval: $interval, adb_host: $host, device_id: $id}' 2>/dev/null || echo "$config_json")
     fi
     
     echo "$config_json"
@@ -341,12 +462,18 @@ for script in start.sh stop.sh install.sh status.sh; do
 done
 
 # -----------------------------------------------------------------------------
+# 配置文件同步
+# -----------------------------------------------------------------------------
+log "执行配置同步"
+sync_mqtt_config
+sync_apps_config
+sync_device_config
+
+# -----------------------------------------------------------------------------
 # 获取版本信息
 # -----------------------------------------------------------------------------
 ANDROID_CONTROL_VERSION=$(get_current_version_fast)
 LATEST_ANDROID_CONTROL_VERSION=$(get_latest_version)
-SCRIPT_VERSION=$(get_script_version)
-LATEST_SCRIPT_VERSION=$(get_latest_script_version)
 
 # -----------------------------------------------------------------------------
 # 获取各脚本状态
@@ -360,11 +487,11 @@ else
     INSTALL_STATUS=$(check_install_fast)
 fi
 
-# 其他状态检查
-BACKUP_STATUS=$(get_improved_backup_status)
-UPDATE_STATUS=$(get_improved_update_status)  
-RESTORE_STATUS=$(get_improved_restore_status)
-UPDATE_INFO=$(get_update_info)
+# isg-android-control 不支持备份、升级、恢复功能
+BACKUP_STATUS="never"
+UPDATE_STATUS="never"
+RESTORE_STATUS="never"
+UPDATE_INFO="no updates supported"
 
 log "状态检查结果:"
 log "  run: $RUN_STATUS"
@@ -426,7 +553,7 @@ LAST_CHECK=${LAST_CHECK:-0}
 RESTART_DETECTED=false
 if [[ "$LAST_CHECK" -gt 0 && "$ANDROID_CONTROL_UPTIME" -lt $((NOW - LAST_CHECK)) ]]; then
     RESTART_DETECTED=true
-    log "检测到服务重启：运行时间 ${ANDROID_CONTROL_UPTIME}s < 检查间隔" $((NOW - LAST_CHECK))s
+    log "检测到服务重启：运行时间 ${ANDROID_CONTROL_UPTIME}s < 检查间隔 $((NOW - LAST_CHECK))s"
 fi
 echo "$NOW" > "$LAST_CHECK_FILE"
 
@@ -458,15 +585,13 @@ mqtt_report "isg/status/$SERVICE_ID/performance" "{\"cpu\":\"$CPU\",\"mem\":\"$M
 # -----------------------------------------------------------------------------
 # 版本信息上报
 # -----------------------------------------------------------------------------
-log "script_version: $SCRIPT_VERSION"
-log "latest_script_version: $LATEST_SCRIPT_VERSION"
 log "android_control_version: $ANDROID_CONTROL_VERSION"
 log "latest_android_control_version: $LATEST_ANDROID_CONTROL_VERSION"
 log "install_status: $INSTALL_STATUS"
 log "run_status: $RUN_STATUS"
 log "update_info: $UPDATE_INFO"
 
-mqtt_report "isg/autocheck/$SERVICE_ID/version" "{\"script_version\":\"$SCRIPT_VERSION\",\"latest_script_version\":\"$LATEST_SCRIPT_VERSION\",\"android_control_version\":\"$ANDROID_CONTROL_VERSION\",\"latest_android_control_version\":\"$LATEST_ANDROID_CONTROL_VERSION\"}"
+mqtt_report "isg/autocheck/$SERVICE_ID/version" "{\"android_control_version\":\"$ANDROID_CONTROL_VERSION\",\"latest_android_control_version\":\"$LATEST_ANDROID_CONTROL_VERSION\"}"
 
 # -----------------------------------------------------------------------------
 # 获取配置信息和状态消息
