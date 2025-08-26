@@ -102,6 +102,53 @@ if get_android_control_pid > /dev/null 2>&1; then
 fi
 
 # -----------------------------------------------------------------------------
+# 检查并启动 Redis 服务
+# -----------------------------------------------------------------------------
+log "检查 Redis 服务状态"
+mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"starting\",\"message\":\"checking Redis service\",\"timestamp\":$(date +%s)}"
+
+# 检查Redis端口6379是否已经运行
+if netstat -tulpn | grep -q ":6379 "; then
+    log "Redis 服务已运行在端口 6379"
+else
+    log "Redis 服务未运行，正在启动"
+    mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"starting\",\"message\":\"starting Redis service\",\"timestamp\":$(date +%s)}"
+    
+    # 尝试启动Redis服务器（后台运行）
+    if redis-server /etc/redis/redis.conf --daemonize yes 2>/dev/null; then
+        log "Redis 启动命令已执行"
+        
+        # 等待一下让Redis完全启动
+        sleep 3
+        
+        # 再次检查是否启动成功
+        if netstat -tulpn | grep -q ":6379 "; then
+            log "Redis 服务启动成功"
+            mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"starting\",\"message\":\"Redis service started successfully\",\"timestamp\":$(date +%s)}"
+        else
+            log "Redis 服务启动失败，尝试前台模式获取错误信息"
+            # 前台模式启动以查看错误
+            redis-server /etc/redis/redis.conf &
+            sleep 2
+        fi
+    else
+        log "Redis 启动失败"
+        mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"failed\",\"message\":\"Redis service failed to start\",\"timestamp\":$(date +%s)}"
+        exit 1
+    fi
+fi
+
+# 最终验证Redis是否可用
+log "验证 Redis 连接"
+if redis-cli ping >/dev/null 2>&1; then
+    log "Redis 连接正常"
+    mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"starting\",\"message\":\"Redis connection verified\",\"timestamp\":$(date +%s)}"
+else
+    log "警告：Redis 无法连接，但继续执行后续命令"
+    mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"starting\",\"message\":\"Redis connection failed but proceeding\",\"timestamp\":$(date +%s)}"
+fi
+
+# -----------------------------------------------------------------------------
 # 启动服务
 # -----------------------------------------------------------------------------
 if [ -e "$CONTROL_FILE" ]; then
