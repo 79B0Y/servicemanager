@@ -1,0 +1,1140 @@
+[2025-08-03 04:40:43] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192442
+}
+[2025-08-03 04:41:09] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192468
+}
+[2025-08-03 04:41:34] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192493
+}
+[2025-08-03 04:41:59] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192518
+}
+[2025-08-03 04:42:23] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192543
+}
+[2025-08-03 04:42:49] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192568
+}
+[2025-08-03 04:43:14] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192593
+}
+[2025-08-03 04:43:39] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192618
+}
+[2025-08-03 04:44:04] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192643
+}
+[2025-08-03 04:44:29] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192668
+}
+[2025-08-03 04:44:54] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192693
+}
+[2025-08-03 04:45:19] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192718
+}
+[2025-08-03 04:45:44] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192743
+}
+[2025-08-03 04:46:09] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192768
+}
+[2025-08-03 04:46:34] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192794
+}
+[2025-08-03 04:46:59] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192818
+}
+[2025-08-03 04:47:25] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192844
+}
+[2025-08-03 04:47:51] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192870
+}
+[2025-08-03 04:48:15] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192895
+}
+[2025-08-03 04:48:39] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192918
+}
+[2025-08-03 04:49:04] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192943
+}
+[2025-08-03 04:49:30] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192969
+}
+[2025-08-03 04:49:54] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754192994
+}
+[2025-08-03 04:50:19] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193019
+}
+[2025-08-03 04:50:44] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193043
+}
+[2025-08-03 04:51:09] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193069
+}
+[2025-08-03 04:51:34] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193094
+}
+[2025-08-03 04:51:59] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193119
+}
+[2025-08-03 04:52:24] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193144
+}
+[2025-08-03 04:52:49] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193169
+}
+[2025-08-03 04:53:14] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193194
+}
+[2025-08-03 04:53:39] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193218
+}
+[2025-08-03 04:54:05] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193244
+}
+[2025-08-03 04:54:29] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193269
+}
+[2025-08-03 04:54:54] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193293
+}
+[2025-08-03 04:55:19] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193319
+}
+[2025-08-03 04:55:44] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193343
+}
+[2025-08-03 04:56:09] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193369
+}
+[2025-08-03 04:56:34] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193394
+}
+[2025-08-03 04:56:59] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193419
+}
+[2025-08-03 04:57:24] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193444
+}
+[2025-08-03 04:57:49] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193469
+}
+[2025-08-03 04:58:14] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193494
+}
+[2025-08-03 04:58:39] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193519
+}
+[2025-08-03 04:59:04] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193544
+}
+[2025-08-03 04:59:29] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193569
+}
+[2025-08-03 04:59:54] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193594
+}
+[2025-08-03 05:00:21] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193621
+}
+[2025-08-03 05:00:44] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193644
+}
+[2025-08-03 05:01:09] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193668
+}
+[2025-08-03 05:01:34] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193694
+}
+[2025-08-03 05:02:00] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193719
+}
+[2025-08-03 05:02:24] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193743
+}
+[2025-08-03 05:02:49] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193769
+}
+[2025-08-03 05:03:15] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193794
+}
+[2025-08-03 05:03:39] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193819
+}
+[2025-08-03 05:04:04] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193844
+}
+[2025-08-03 05:04:29] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193869
+}
+[2025-08-03 05:04:55] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193894
+}
+[2025-08-03 05:05:19] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193919
+}
+[2025-08-03 05:05:45] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193944
+}
+[2025-08-03 05:06:10] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193969
+}
+[2025-08-03 05:06:34] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754193994
+}
+[2025-08-03 05:06:59] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194019
+}
+[2025-08-03 05:07:24] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194044
+}
+[2025-08-03 05:07:50] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194069
+}
+[2025-08-03 05:08:14] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194094
+}
+[2025-08-03 05:08:39] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194119
+}
+[2025-08-03 05:09:04] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194144
+}
+[2025-08-03 05:09:30] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194169
+}
+[2025-08-03 05:09:55] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194194
+}
+[2025-08-03 05:10:20] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194219
+}
+[2025-08-03 05:10:44] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194244
+}
+[2025-08-03 05:11:10] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194269
+}
+[2025-08-03 05:11:35] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194294
+}
+[2025-08-03 05:11:59] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194319
+}
+[2025-08-03 05:12:24] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194344
+}
+[2025-08-03 05:12:49] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194369
+}
+[2025-08-03 05:13:15] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194394
+}
+[2025-08-03 05:13:40] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194419
+}
+[2025-08-03 05:14:05] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194444
+}
+[2025-08-03 05:14:30] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194469
+}
+[2025-08-03 05:14:55] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194494
+}
+[2025-08-03 05:15:20] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194519
+}
+[2025-08-03 05:15:45] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194544
+}
+[2025-08-03 05:16:10] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194569
+}
+[2025-08-03 05:16:35] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194594
+}
+[2025-08-03 05:17:00] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194619
+}
+[2025-08-03 05:17:25] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194644
+}
+[2025-08-03 05:17:50] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194669
+}
+[2025-08-03 05:18:15] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194694
+}
+[2025-08-03 05:18:40] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194719
+}
+[2025-08-03 05:19:05] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194744
+}
+[2025-08-03 05:19:30] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194769
+}
+[2025-08-03 05:19:55] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194794
+}
+[2025-08-03 05:20:20] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194819
+}
+[2025-08-03 05:20:44] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194844
+}
+[2025-08-03 05:21:10] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194869
+}
+[2025-08-03 05:21:35] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194894
+}
+[2025-08-03 05:22:00] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194919
+}
+[2025-08-03 05:22:25] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194944
+}
+[2025-08-03 05:22:50] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194969
+}
+[2025-08-03 05:23:14] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754194994
+}
+[2025-08-03 05:23:40] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754195020
+}
+[2025-08-03 05:24:05] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754195044
+}
+[2025-08-03 05:24:30] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754195069
+}
+[2025-08-03 05:24:55] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754195094
+}
+[2025-08-03 05:25:20] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754195119
+}
+[2025-08-03 05:25:45] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754195145
+}
+[2025-08-03 05:26:10] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754195169
+}
+[2025-08-03 05:26:35] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754195194
+}
+[2025-08-03 05:27:00] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754195220
+}
+[2025-08-03 05:27:25] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754195244
+}
+[2025-08-03 05:27:50] [MQTT] isg/status/isghotel/status -> {
+  "service": "isghotel",
+  "status": "stopped",
+  "pid": "",
+  "runtime": "",
+  "port_status": "not_listening",
+  "install": false,
+  "version": "unknown",
+  "timestamp": 1754195270
+}

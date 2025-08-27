@@ -1,0 +1,10 @@
+[2025-08-03 04:17:04] [MQTT] isg/status/isgdida/status -> {
+  "service": "isgdida",
+  "status": "running",
+  "pid": "8159",
+  "runtime": "00:08",
+  "port_status": "listening",
+  "install": true,
+  "version": "1.1.1-8-g1bf6146-1bf6146",
+  "timestamp": 1754191023
+}

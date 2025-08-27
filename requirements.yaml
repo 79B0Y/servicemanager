@@ -1,0 +1,22 @@
+termux:
+  - pkg install netcat-openbsd  # 端口检测工具 nc
+  - pkg install jq              # JSON 解析工具
+  - pip install pyserial        # 读取串口
+  - pip install pyyaml          # 读取yaml文件
+
+
+proot_ubuntu:
+  - apt update && apt install -y netcat jq unzip
+  - apt install -y ffmpeg libturbojpeg  # HA 视频解码相关依赖
+  - pip3 install pyyaml  # proot_ubuntu 读取yaml文件
+
+  
+proot_python_ha_evn:
+  - numpy
+  - mutagen
+  - pillow
+  - aiohttp==3.10.8
+  - attrs==23.2.0
+  - PyTurboJPEG
+  - zlib-ng
+  - isal
