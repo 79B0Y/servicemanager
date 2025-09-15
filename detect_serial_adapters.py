@@ -61,6 +61,71 @@ def mqtt_report(topic, message):
     except Exception as e:
         logging.error(f"MQTT 上报失败: {e}")
 
+def ensure_ports_available(chmod_mode="777", patterns=None, graceful_wait=0.5):
+    """
+    1) 对匹配的串口设备用 su 授权（使用 echo 'cmd' | su 的方式，兼容不支持 -c 的 su）
+    2) 使用 fuser 找出占用端口的 PID，先 SIGTERM，再 SIGKILL（如果需要）
+    参数:
+      chmod_mode: 字符串, 比如 "777" 或 "666"
+      patterns: 列表, glob 模式列表, eg ["/dev/ttyUSB*", "/dev/ttyACM*"]
+      graceful_wait: 在发送 SIGTERM 后等待多少秒再判断是否需要 SIGKILL
+    """
+    if patterns is None:
+        patterns = ["/dev/ttyUSB*", "/dev/ttyACM*"]
+
+    # 1) chmod via su (echo pipe)
+    for pat in patterns:
+        for dev in sorted(glob.glob(pat)):
+            try:
+                cmd = f"echo 'chmod {chmod_mode} {dev}' | su"
+                logging.info(f"授权设备 {dev} -> {chmod_mode}")
+                subprocess.run(["sh", "-c", cmd], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            except subprocess.CalledProcessError as e:
+                logging.warning(f"给 {dev} 授权失败: {e}; stdout={e.stdout} stderr={e.stderr}")
+
+    # 2) fuser -> kill
+    for pat in patterns:
+        for dev in sorted(glob.glob(pat)):
+            try:
+                # fuser 输出 pid 列表（也可能返回 non-zero if none）
+                ps = subprocess.run(["fuser", dev], capture_output=True, text=True)
+                stdout = ps.stdout.strip()
+                stderr = ps.stderr.strip()
+                if ps.returncode != 0 and not stdout:
+                    logging.debug(f"fuser: {dev} 没有占用进程 (returncode={ps.returncode}, stderr={stderr})")
+                    continue
+
+                # fuser 输出格式示例: "1234 2345"
+                pids = [pid for pid in shlex.split(stdout) if pid.isdigit()]
+                if not pids:
+                    logging.debug(f"fuser 未返回有效 pid: '{stdout}'")
+                    continue
+
+                logging.info(f"设备 {dev} 被如下 PID 占用: {pids}，尝试优雅终止 (SIGTERM)")
+                for pid in pids:
+                    try:
+                        # 先尝试优雅退出
+                        subprocess.run(["kill", "-TERM", pid], check=False)
+                    except Exception as e:
+                        logging.warning(f"向 PID {pid} 发送 TERM 失败: {e}")
+
+                # 等待短暂时间看进程是否退出
+                time.sleep(graceful_wait)
+
+                # 检查进程是否还存在，若存在则强制 SIGKILL
+                for pid in pids:
+                    if os.path.exists(f"/proc/{pid}"):
+                        logging.info(f"PID {pid} 仍存在，发送 SIGKILL")
+                        try:
+                            subprocess.run(["kill", "-KILL", pid], check=False)
+                        except Exception as e:
+                            logging.error(f"向 PID {pid} 发送 KILL 失败: {e}")
+                    else:
+                        logging.info(f"PID {pid} 已退出")
+            except Exception as e:
+                logging.error(f"处理设备 {dev} 时出错: {e}")
+
+
 def check_port_usage(port):
     try:
         output = subprocess.check_output(['fuser', port], text=True).strip()
@@ -175,6 +240,7 @@ def save_results(results):
     mqtt_report("isg/serial/scan", final_result)
 
 def main():
+    ensure_ports_available(chmod_mode="777", patterns=["/dev/ttyUSB*", "/dev/ttyACM*"])
     ports = list_serial_ports()
     if not ports:
         logging.error("未找到任何串口设备")
