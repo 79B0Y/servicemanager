@@ -1,7 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
 # isg-credential-services 自检脚本 - 完整版本
-# 版本: v1.2.0
+# 版本: v1.2.1 (修复缺失函数)
 # 功能: 单服务自检与性能监控，包括配置信息提取和Node-RED集成验证
 # =============================================================================
 
@@ -128,6 +128,66 @@ get_upgrade_dependencies() {
         jq -c ".services[] | select(.id==\"$SERVICE_ID\") | .upgrade_dependencies" "$SERVICEUPDATE_FILE" 2>/dev/null || echo "[]"
     else
         echo "[]"
+    fi
+}
+
+# 获取 agent.json 版本信息
+get_agent_json_version() {
+    if [[ -f "$CREDENTIAL_AGENT_FILE" ]]; then
+        local agent_version=$(proot-distro login "$PROOT_DISTRO" -- bash -c "
+            if [ -f '$CREDENTIAL_AGENT_FILE' ]; then
+                jq -r '.version // \"unknown\"' '$CREDENTIAL_AGENT_FILE' 2>/dev/null || echo 'unknown'
+            else
+                echo 'unknown'
+            fi
+        " 2>/dev/null || echo "unknown")
+        
+        if [[ -n "$agent_version" && "$agent_version" != "unknown" ]]; then
+            echo "$agent_version"
+        else
+            # 如果没有版本字段，尝试从文件修改时间推断
+            local file_date=$(proot-distro login "$PROOT_DISTRO" -- stat -c %Y "$CREDENTIAL_AGENT_FILE" 2>/dev/null || echo "0")
+            if [[ "$file_date" != "0" ]]; then
+                echo "modified_$(date -d @$file_date +%Y%m%d)" 2>/dev/null || echo "unknown"
+            else
+                echo "unknown"
+            fi
+        fi
+    else
+        echo "not_found"
+    fi
+}
+
+# 获取已导入到 Node-RED 的 agent 版本
+get_imported_agent_version() {
+    # 检查 Node-RED 是否运行
+    if ! netstat -tnlp 2>/dev/null | grep ":1880 " > /dev/null; then
+        echo "node_red_offline"
+        return
+    fi
+    
+    # 尝试从 Node-RED API 获取当前 flows
+    local flows_content=""
+    flows_content=$(curl -s -m 5 http://127.0.0.1:1880/flows 2>/dev/null)
+    
+    if [[ -z "$flows_content" ]]; then
+        echo "api_error"
+        return
+    fi
+    
+    # 检查是否包含 credential 相关的流
+    local has_credential_flow=$(echo "$flows_content" | jq -r '.[].label // .[].name // ""' 2>/dev/null | grep -qi "credential\|agent" && echo "true" || echo "false")
+    
+    if [[ "$has_credential_flow" == "true" ]]; then
+        # 尝试从流的创建时间或其他标识获取版本信息
+        local flow_timestamp=$(echo "$flows_content" | jq -r '.[] | select(.label // .name | test("credential|agent"; "i")) | .id' 2>/dev/null | head -n1)
+        if [[ -n "$flow_timestamp" ]]; then
+            echo "imported_${flow_timestamp:0:8}" 2>/dev/null || echo "imported"
+        else
+            echo "imported"
+        fi
+    else
+        echo "not_imported"
     fi
 }
 
@@ -414,7 +474,7 @@ get_config_info_fast() {
     echo "$config_json"
 }
 
-# 检查Node-RED是否启用
+# 检查Node-RED是否可用
 check_node_red_status() {
     # 检查Node-RED是否在运行
     if netstat -tnlp 2>/dev/null | grep ":1880 " > /dev/null; then
@@ -424,7 +484,7 @@ check_node_red_status() {
     fi
 }
 
-# 将agent.json导入到Node-RED并验证工作流
+# 使用专用脚本更新Node-RED工作流
 import_and_verify_agent_workflow() {
     local node_red_enabled=$(check_node_red_status)
     
@@ -434,157 +494,62 @@ import_and_verify_agent_workflow() {
         return
     fi
     
-    # 检查agent.json文件是否存在
-    if [[ ! -f "$CREDENTIAL_AGENT_FILE" ]]; then
-        log "agent.json文件不存在: $CREDENTIAL_AGENT_FILE"
+    # 检查flowupdate.sh是否存在
+    local flow_updater_script="$SERVICE_DIR/flowupdate.sh"
+    if [[ ! -f "$flow_updater_script" ]]; then
+        log "flowupdate.sh脚本不存在: $flow_updater_script"
+        echo "updater_script_missing"
+        return
+    fi
+    
+    # 检查agent.json文件是否存在（在本地服务目录）
+    local local_agent_file="$SERVICE_DIR/agent.json"
+    if [[ ! -f "$local_agent_file" ]]; then
+        log "agent.json文件不存在: $local_agent_file"
         echo "agent_file_missing"
         return
     fi
     
-    log "开始将agent.json导入到Node-RED工作流"
+    log "使用flowupdate.sh检查和更新Node-RED工作流"
     
-    # 读取agent.json内容
-    local agent_content=""
-    agent_content=$(proot-distro login "$PROOT_DISTRO" -- cat "$CREDENTIAL_AGENT_FILE" 2>/dev/null)
+    # 执行flowupdate.sh脚本
+    local update_result=""
+    local update_output=""
     
-    if [[ -z "$agent_content" ]]; then
-        log "无法读取agent.json内容"
-        echo "agent_file_unreadable"
-        return
-    fi
+    # 使用--check-only模式先检查版本
+    update_output=$(bash "$flow_updater_script" --check-only 2>&1)
+    local check_exit_code=$?
     
-    # 验证JSON格式
-    if ! echo "$agent_content" | jq . >/dev/null 2>&1; then
-        log "agent.json格式无效"
-        echo "agent_file_invalid_json"
-        return
-    fi
+    log "版本检查结果: $update_output"
     
-    # 获取当前Node-RED flows
-    local current_flows=""
-    current_flows=$(curl -s -m 10 http://127.0.0.1:1880/flows 2>/dev/null)
-    
-    if [[ -z "$current_flows" ]]; then
-        log "无法连接到Node-RED API"
-        echo "node_red_api_error"
-        return
-    fi
-    
-    # 检查当前flows中是否已经包含credential相关的流
-    local has_credential_flow=false
-    if echo "$current_flows" | jq -r '.[].label // .[].name // ""' 2>/dev/null | grep -qi "credential\|agent"; then
-        has_credential_flow=true
-        log "检测到已存在credential相关工作流"
-    fi
-    
-    # 创建临时文件存储要导入的flows
-    local temp_flows_file="$TERMUX_TMP_DIR/agent_flows_$.json"
-    
-    # 如果agent.json是数组格式（标准Node-RED flows格式）
-    if echo "$agent_content" | jq -e 'type == "array"' >/dev/null 2>&1; then
-        # 合并现有flows和agent flows
-        if [[ "$has_credential_flow" == "false" ]]; then
-            # 创建合并后的flows
-            echo "$current_flows" | jq --argjson agent "$agent_content" '. + $agent' > "$temp_flows_file" 2>/dev/null
+    if [[ $check_exit_code -eq 0 ]]; then
+        # 如果需要更新，执行更新
+        if echo "$update_output" | grep -q "需要更新"; then
+            log "检测到版本差异，开始更新工作流"
             
-            if [[ $? -eq 0 ]]; then
-                # 导入合并后的flows到Node-RED
-                local import_result=$(curl -s -X POST -H "Content-Type: application/json" \
-                    -d @"$temp_flows_file" \
-                    http://127.0.0.1:1880/flows 2>/dev/null)
-                
-                if [[ $? -eq 0 ]]; then
-                    log "成功将agent.json导入到Node-RED"
-                    
-                    # 部署flows
-                    curl -s -X POST -H "Content-Type: application/json" \
-                        -d '{"flows": "deploy"}' \
-                        http://127.0.0.1:1880/flows 2>/dev/null
-                    
-                    # 验证导入结果
-                    sleep 3
-                    local verification_flows=$(curl -s -m 5 http://127.0.0.1:1880/flows 2>/dev/null)
-                    if echo "$verification_flows" | jq -r '.[].label // .[].name // ""' 2>/dev/null | grep -qi "credential\|agent"; then
-                        log "agent工作流导入验证成功"
-                        echo "imported_and_verified"
-                    else
-                        log "agent工作流导入验证失败"
-                        echo "import_verification_failed"
-                    fi
+            # 执行实际更新
+            update_output=$(bash "$flow_updater_script" 2>&1)
+            local update_exit_code=$?
+            
+            if [[ $update_exit_code -eq 0 ]]; then
+                log "工作流更新成功"
+                if echo "$update_output" | grep -q "更新完成"; then
+                    echo "updated_successfully"
                 else
-                    log "导入agent.json到Node-RED失败"
-                    echo "import_failed"
+                    echo "updated_with_warnings"
                 fi
             else
-                log "合并flows失败"
-                echo "flows_merge_failed"
+                log "工作流更新失败: $update_output"
+                echo "update_failed"
             fi
         else
-            log "credential工作流已存在，跳过导入"
-            echo "already_imported"
+            log "工作流版本已是最新"
+            echo "already_latest"
         fi
     else
-        # 如果agent.json不是标准flows格式，尝试包装为flow
-        local wrapped_flow=$(echo "$agent_content" | jq -n --argjson agent "$agent_content" '[{
-            "id": ("agent_flow_" + (now | tostring)),
-            "label": "ISG Credential Agent Flow",
-            "nodes": [
-                {
-                    "id": ("agent_node_" + (now | tostring)),
-                    "type": "inject",
-                    "name": "Agent Trigger",
-                    "props": [{"p": "payload"}, {"p": "topic", "vt": "str"}],
-                    "repeat": "",
-                    "crontab": "",
-                    "once": false,
-                    "onceDelay": 0.1,
-                    "topic": "agent",
-                    "payload": $agent,
-                    "payloadType": "json",
-                    "x": 140,
-                    "y": 80,
-                    "wires": [["output_node"]]
-                },
-                {
-                    "id": "output_node",
-                    "type": "debug",
-                    "name": "Agent Output",
-                    "active": true,
-                    "tosidebar": true,
-                    "console": false,
-                    "tostatus": false,
-                    "complete": "payload",
-                    "targetType": "msg",
-                    "x": 370,
-                    "y": 80,
-                    "wires": []
-                }
-            ]
-        }]' 2>/dev/null)
-        
-        if [[ $? -eq 0 && -n "$wrapped_flow" ]]; then
-            echo "$wrapped_flow" > "$temp_flows_file"
-            
-            # 导入包装后的flow
-            local import_result=$(curl -s -X POST -H "Content-Type: application/json" \
-                -d @"$temp_flows_file" \
-                http://127.0.0.1:1880/flows 2>/dev/null)
-            
-            if [[ $? -eq 0 ]]; then
-                log "成功将包装的agent配置导入到Node-RED"
-                echo "wrapped_and_imported"
-            else
-                log "导入包装的agent配置失败"
-                echo "wrapped_import_failed"
-            fi
-        else
-            log "无法包装agent.json为Node-RED flow格式"
-            echo "agent_format_unsupported"
-        fi
+        log "版本检查失败: $update_output"
+        echo "version_check_failed"
     fi
-    
-    # 清理临时文件
-    rm -f "$temp_flows_file" 2>/dev/null
 }
 
 # =============================================================================
