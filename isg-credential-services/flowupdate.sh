@@ -301,25 +301,38 @@ main() {
 case "${1:-}" in
     --force)
         log "强制更新模式"
+        if ! check_node_red || ! check_agent_file; then
+            exit 1
+        fi
         backup_flows
-        update_flows "merge"
+        update_flows "replace"
         verify_update
         ;;
     --replace)
         log "完全替换模式"
+        if ! check_node_red || ! check_agent_file; then
+            exit 1
+        fi
         backup_flows
         update_flows "replace"
         verify_update
         ;;
     --check-only)
+        if ! check_node_red || ! check_agent_file; then
+            echo "检查失败"
+            exit 1
+        fi
+        
         file_version=$(get_file_version)
         deployed_version=$(get_deployed_version)
         echo "本地版本: $file_version"
         echo "部署版本: $deployed_version"
         if compare_versions "$file_version" "$deployed_version"; then
             echo "需要更新"
+            exit 0
         else
             echo "无需更新"
+            exit 1
         fi
         ;;
     --help)
