@@ -1,0 +1,692 @@
+[
+    {
+        "id": "9c20bd5384c80812",
+        "type": "tab",
+        "label": "AI Agent",
+        "disabled": false,
+        "info": "",
+        "version": "10001",
+        "env": []
+    },
+    {
+        "id": "6e11d670ca599080",
+        "type": "websocket-listener",
+        "path": "ws://localhost:8080",
+        "wholemsg": "false"
+    },
+    {
+        "id": "72ab47adfc170794",
+        "type": "switch",
+        "z": "9c20bd5384c80812",
+        "name": "",
+        "property": "payload.type",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "text",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "voice",
+                "vt": "str"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 2,
+        "x": 670,
+        "y": 280,
+        "wires": [
+            [
+                "8a873c894674fe2c"
+            ],
+            [
+                "d42e69a65e7c8da3"
+            ]
+        ]
+    },
+    {
+        "id": "df9e22e82e1b3b0b",
+        "type": "json",
+        "z": "9c20bd5384c80812",
+        "name": "",
+        "property": "payload",
+        "action": "",
+        "pretty": false,
+        "x": 550,
+        "y": 280,
+        "wires": [
+            [
+                "72ab47adfc170794",
+                "8f7dbca98f89e8dc"
+            ]
+        ]
+    },
+    {
+        "id": "b05625ee0bca9ffd",
+        "type": "websocket in",
+        "z": "9c20bd5384c80812",
+        "name": "Telegram Message",
+        "server": "6e11d670ca599080",
+        "client": "",
+        "x": 390,
+        "y": 280,
+        "wires": [
+            [
+                "df9e22e82e1b3b0b"
+            ]
+        ]
+    },
+    {
+        "id": "8f7dbca98f89e8dc",
+        "type": "http request",
+        "z": "9c20bd5384c80812",
+        "name": "查询家庭房间",
+        "method": "GET",
+        "ret": "txt",
+        "paytoqs": "ignore",
+        "url": "http://localhost:3000/api/home_assistant/home_assistant/rooms",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 640,
+        "y": 220,
+        "wires": [
+            [
+                "91254e945904a2fa"
+            ]
+        ]
+    },
+    {
+        "id": "c484aa7edcc975ac",
+        "type": "join",
+        "z": "9c20bd5384c80812",
+        "name": "",
+        "mode": "custom",
+        "build": "array",
+        "property": "payload",
+        "propertyType": "msg",
+        "key": "topic",
+        "joiner": "\\n",
+        "joinerType": "str",
+        "useparts": false,
+        "accumulate": false,
+        "timeout": "",
+        "count": "2",
+        "reduceRight": false,
+        "reduceExp": "",
+        "reduceInit": "",
+        "reduceInitType": "",
+        "reduceFixup": "",
+        "x": 1150,
+        "y": 280,
+        "wires": [
+            [
+                "40071fe16a20b6b6"
+            ]
+        ]
+    },
+    {
+        "id": "8a873c894674fe2c",
+        "type": "json",
+        "z": "9c20bd5384c80812",
+        "name": "",
+        "property": "payload",
+        "action": "obj",
+        "pretty": false,
+        "x": 970,
+        "y": 280,
+        "wires": [
+            [
+                "c484aa7edcc975ac"
+            ]
+        ]
+    },
+    {
+        "id": "ba887c58a7c32d98",
+        "type": "function",
+        "z": "9c20bd5384c80812",
+        "name": "提取语音文字",
+        "func": " const inputData = JSON.parse(msg.payload);\n    \n    // 提取text字段\n    const textContent = inputData.data.text;\n    \n    // 构造输出对象\n    msg.payload = {\n        content: textContent\n    };\n    \n    return msg;\n    ",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1000,
+        "y": 340,
+        "wires": [
+            [
+                "c484aa7edcc975ac"
+            ]
+        ]
+    },
+    {
+        "id": "fc353df907fb5968",
+        "type": "http request",
+        "z": "9c20bd5384c80812",
+        "name": "Whisper",
+        "method": "POST",
+        "ret": "txt",
+        "paytoqs": "ignore",
+        "url": "http://localhost:3000/api/openai/openai/transcribe-url",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [
+            {
+                "keyType": "other",
+                "keyValue": "Content-Type",
+                "valueType": "other",
+                "valueValue": "application/json"
+            }
+        ],
+        "x": 820,
+        "y": 340,
+        "wires": [
+            [
+                "ba887c58a7c32d98"
+            ]
+        ]
+    },
+    {
+        "id": "caaa1a12ac3db437",
+        "type": "http request",
+        "z": "9c20bd5384c80812",
+        "name": "OpenAI 意图转换",
+        "method": "POST",
+        "ret": "txt",
+        "paytoqs": "ignore",
+        "url": "http://localhost:3000/api/openai/openai/simple-chat",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 1450,
+        "y": 280,
+        "wires": [
+            [
+                "ba3758e6e1ccbd3e",
+                "ed34c77516a1209e"
+            ]
+        ]
+    },
+    {
+        "id": "d42e69a65e7c8da3",
+        "type": "function",
+        "z": "9c20bd5384c80812",
+        "name": "语音提示词",
+        "func": "const audioUrl = msg.payload.content;\n\nmsg.headers = {\n    \"Content-Type\": \"application/json\"\n};\n\nmsg.payload = {\n    \"audio_url\": audioUrl,\n    \"model\": \"whisper-1\",\n    \"language\": null, // 自动检测\n    \"response_format\": \"json\"\n};\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 650,
+        "y": 340,
+        "wires": [
+            [
+                "fc353df907fb5968"
+            ]
+        ]
+    },
+    {
+        "id": "ba3758e6e1ccbd3e",
+        "type": "function",
+        "z": "9c20bd5384c80812",
+        "name": "转换JSON文件",
+        "func": "// Function Node 代码 - 提取并整理AI回复内容\nfunction extractAIResponse(msg) {\n    try {\n        // 解析输入的JSON数据\n        let inputData;\n        if (typeof msg.payload === 'string') {\n            inputData = JSON.parse(msg.payload);\n        } else {\n            inputData = msg.payload;\n        }\n        \n        // 检查数据结构是否正确\n        if (!inputData.success || !inputData.data || !inputData.data.choices) {\n            throw new Error('Invalid response structure');\n        }\n        \n        // 提取AI回复的内容\n        const aiResponse = inputData.data.choices[0].message.content;\n        \n        // 解析AI回复的JSON内容\n        const parsedResponse = JSON.parse(aiResponse);\n        \n        // 整理成标准格式\n        const organizedData = {\n            // 基本信息\n            intent: parsedResponse.intent || null,\n            confidence: parsedResponse.confidence || null,\n            user_input: parsedResponse.user_input || null,\n            \n            // 识别结果\n            matched_rooms: parsedResponse.matched_rooms || [],\n            device_types: parsedResponse.device_types || [],\n            \n            // 设备控制信息\n            devices: parsedResponse.devices ? parsedResponse.devices.map(device => ({\n                room_name: device.room_name || null,\n                device_type: device.device_type || null,\n                device_name: device.device_name || null,\n                action: device.action || null,\n                service: device.service || null,\n                data: device.data || {}\n            })) : []\n        };\n        \n        // 输出整理后的数据\n        msg.payload = organizedData;\n        \n        // 可选：将原始数据保存在另一个属性中\n        msg.original_response = inputData;\n        \n        return msg;\n        \n    } catch (error) {\n        // 错误处理\n        msg.payload = {\n            error: true,\n            message: error.message,\n            original_payload: msg.payload\n        };\n        \n        node.error(\"Failed to extract AI response: \" + error.message, msg);\n        return msg;\n    }\n}\n\n// 调用函数\nreturn extractAIResponse(msg);",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1640,
+        "y": 280,
+        "wires": [
+            [
+                "423718586ad0a698"
+            ]
+        ]
+    },
+    {
+        "id": "423718586ad0a698",
+        "type": "switch",
+        "z": "9c20bd5384c80812",
+        "name": "",
+        "property": "payload.intent",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "Query Device Status",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "Control Device",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "Control Scene",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "Set Scene",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "Set Automation",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "Other",
+                "vt": "str"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 6,
+        "x": 1790,
+        "y": 280,
+        "wires": [
+            [
+                "b0e9db3c014e3c98"
+            ],
+            [
+                "45c7a78f4454e8fa"
+            ],
+            [],
+            [],
+            [],
+            []
+        ]
+    },
+    {
+        "id": "40071fe16a20b6b6",
+        "type": "function",
+        "z": "9c20bd5384c80812",
+        "name": "AI提示词",
+        "func": "// 优化的数据提取函数\nfunction extractData(payload) {\n    let messageData = null;\n    let roomData = null;\n\n    if (!Array.isArray(payload)) {\n        return { error: \"输入数据不是数组格式\" };\n    }\n\n    // 遍历数组，根据属性识别对象类型\n    for (let i = 0; i < payload.length; i++) {\n        const item = payload[i];\n\n        // 识别消息对象（包含 content 字段）\n        if (item && typeof item === 'object' && item.content !== undefined) {\n            messageData = item;\n            continue;\n        }\n\n        // 识别房间数组（直接是数组且包含 name 和 floor_name）\n        if (Array.isArray(item) && item.length > 0 && \n            item[0].name !== undefined && item[0].floor_name !== undefined) {\n            roomData = item;\n            continue;\n        }\n\n        // 识别包含 rooms 数据的对象\n        if (item && typeof item === 'object' && item.data && Array.isArray(item.data.rooms)) {\n            roomData = item.data.rooms;\n            continue;\n        }\n    }\n\n    // 检查是否成功获取到所需数据\n    if (!messageData) {\n        return { error: \"无法找到消息数据\" };\n    }\n\n    if (!roomData) {\n        return { error: \"无法找到房间数据\" };\n    }\n\n    return {\n        success: true,\n        message: {\n            content: messageData.content || \"\",\n            chat_id: messageData.chat_id || null,\n            from_name: messageData.from_name || \"\",\n            timestamp: messageData.timestamp || \"\"\n        },\n        rooms: roomData\n    };\n}\n\n// Node-RED Function Node 使用\nconst result = extractData(msg.payload);\n\nif (!result.success) {\n    node.error(result.error, msg);\n    return null;\n}\n\n// 构建输出消息\nconst inputText = result.message.content;\nconst haRoom = result.rooms;\n\n// 构建用户输入\nconst userPrompt = `用户指令: ${inputText}\n\n可用房间: ${JSON.stringify(haRoom, null, 2)}\n\n请分析用户指令并返回对应的房间控制命令。`;\n\n\n// 设置请求头\nmsg.headers = {\n    \"Content-Type\": \"application/json\"\n};\n\n// 构建请求负载\nmsg.payload = {\n    \"system_prompt\": `你是Home Assistant智能家居指令解析专家。分析用户自然语言指令，提取房间、设备信息，判断意图并转换为Home Assistant服务调用。\n\n## 意图分类（六种类型）\n1. Query Device Status（查询设备状态）\n2. Control Device（控制设备）\n3. Control Scene（场景控制）\n4. Set Scene（设定场景）\n5. Set Automation（设定自动化）\n6. Other（其他）\n\n## 房间匹配规则\n**优先级顺序**：\n1. **精确匹配**：优先匹配可用房间列表中的确切房间名称\n2. **模糊匹配**：如果用户使用通用空间名称，按以下规则匹配：\n   - 客厅/大厅/会客厅/起居室 → 匹配包含\"Living Room\"的房间\n   - **卧室/睡房** → 匹配包含\"Bedroom\"的所有房间\n   - **主卧/主卧室** → 仅匹配\"Master Bedroom\"\n   - **次卧/客卧** → 匹配除\"Master Bedroom\"外的其他\"Bedroom\"房间\n   - 书房/办公室/工作室/学习室 → 匹配包含\"Study\"的房间\n   - 厨房/烹饪间 → 匹配包含\"Kitchen\"的房间\n   - 餐厅/饭厅/用餐区 → 匹配包含\"Dining\"的房间\n   - 卫生间/洗手间/厕所/浴室 → 匹配包含\"Bathroom\"的房间\n   - 阳台/露台/平台 → 匹配包含\"Balcony\"的房间\n   - 花园/后院/前院/庭院 → 匹配包含\"Garden\"的房间\n   - 车库/停车库 → 匹配包含\"Garage\"的房间\n   - 走廊/过道/通道 → 匹配包含\"Hallway\"的房间\n3. 如果用户没有说任何房间，则匹配所有房间\n4. 如果用户说楼层，则匹配该楼层所有房间\n\n## 设备类型映射（Home Assistant域名）\n- 灯/台灯/吊灯/射灯/筒灯/照明灯 → light\n- 空调/冷气/制冷机 → climate\n- 风扇/吊扇/台扇/电扇 → fan\n- 电视/TV/显示器 → media_player\n- 音响/音箱/扬声器 → media_player\n- 窗帘/百叶窗/遮光帘 → cover\n- 开关/插座 → switch\n- 温度计/温度传感器 → sensor\n- 湿度计/湿度传感器 → sensor\n- 人体感应器/移动传感器/运动传感器 → binary_sensor\n\n## 参数提取和动作映射规则\n\n### 灯光控制参数：\n- **颜色参数**：红色→{\"color_name\": \"red\"}，蓝色→{\"color_name\": \"blue\"}，绿色→{\"color_name\": \"green\"}，白色→{\"color_name\": \"white\"}，黄色→{\"color_name\": \"yellow\"}，紫色→{\"color_name\": \"purple\"}，橙色→{\"color_name\": \"orange\"}，粉色→{\"color_name\": \"pink\"}\n- **亮度参数**：X%→{\"brightness_pct\": X}，最亮→{\"brightness_pct\": 100}，最暗→{\"brightness_pct\": 1}，亮一点→{\"brightness_pct\": 80}，暗一点→{\"brightness_pct\": 20}\n- **色温参数**：暖光→{\"color_temp\": 3000}，冷光→{\"color_temp\": 6500}，自然光→{\"color_temp\": 4000}\n\n### 空调控制参数：\n- **温度参数**：X度→{\"temperature\": X}，调高→{\"temperature\": 25}，调低→{\"temperature\": 20}\n- **模式参数**：制冷→{\"hvac_mode\": \"cool\"}，制热→{\"hvac_mode\": \"heat\"}，通风→{\"hvac_mode\": \"fan_only\"}，自动→{\"hvac_mode\": \"auto\"}\n\n### 风扇控制参数：\n- **速度参数**：低速→{\"percentage\": 33}，中速→{\"percentage\": 66}，高速→{\"percentage\": 100}，X档→{\"percentage\": X*20}\n\n### 窗帘控制参数：\n- **位置参数**：开一半→{\"position\": 50}，全开→{\"position\": 100}，全关→{\"position\": 0}\n\n## 动作翻译规则（中文→英文）\n### 基础动作：\n- 打开/开启/启动 → Turn On\n- 关闭/关掉/停止 → Turn Off\n- 查询/检查/看看 → Check Status\n\n### 复合动作（包含参数）：\n- 打开并设置颜色 → Turn On and Set Color\n- 打开并设置亮度 → Turn On and Set Brightness  \n- 打开并设置颜色和亮度 → Turn On and Set Color and Brightness\n- 调节温度 → Set Temperature\n- 调节亮度 → Set Brightness\n- 设置颜色 → Set Color\n- 调节速度 → Set Speed\n- 设置位置 → Set Position\n\n### 服务映射：\n- 灯光：turn_on, turn_off\n- 空调：set_temperature, set_hvac_mode, turn_on, turn_off\n- 风扇：set_percentage, turn_on, turn_off\n- 窗帘：set_cover_position, open_cover, close_cover\n\n## 参数提取示例：\n**输入**：\"打开卧室的灯，都调成红色，亮度50%\"\n**输出data**：{\"color_name\": \"red\", \"brightness_pct\": 50}\n**action**：\"Turn On and Set Color and Brightness\"\n\n**输入**：\"把客厅空调温度调到22度\"\n**输出data**：{\"temperature\": 22}\n**action**：\"Set Temperature\"\n\n**输入**：\"关闭书房的灯\"\n**输出data**：{}\n**action**：\"Turn Off\"\n\n## 意图分类规则\n- **Control Device**：用户明确指定设备和动作（如：\"打开客厅灯\"、\"关闭书房空调\"）\n- **Control Scene**：用户使用场景关键词（如：\"启动/执行/开启XX模式/场景\"）\n- **Query Device Status**：用户询问设备状态（如：\"客厅灯开着吗\"、\"空调温度是多少\"）\n\n### 对于设备控制类指令：\n{\n    \"intent\": \"Control Device|Query Device Status|Control Scene|Set Scene|Set Automation|Other\",\n    \"confidence\": 0.95,\n    \"user_input\": \"用户原始输入\",\n    \"matched_rooms\": [\"实际房间名1\", \"实际房间名2\"],\n    \"device_types\": [\"light\", \"climate\", \"fan\", \"media_player\", \"cover\", \"switch\"],\n    \"devices\": [\n        {\n            \"room_name\": \"实际房间名1\",\n            \"device_type\": \"Home Assistant域名\",\n            \"device_name\": \"用户说的设备名称，并翻译成英文，示例：打开落地灯，设备名称 - floor light\",\n            \"action\": \"精确的英文动作描述（包含所有参数信息）\",\n            \"service\": \"turn_on|turn_off|set_temperature|set_brightness|set_color\",\n            \"data\": {\"具体参数名\": \"具体参数值\", \"color_name\": \"red\", \"brightness_pct\": 50}\n        }\n    ],\n    \"ai_respond\": \"根据用户的原始输入进行回答（收到指令，即将执行用户的指令），并保持与用户的原始输入语言一致\"\n}\n\n### 对于场景控制类指令：\n{\n    \"intent\": \"Control Scene\", \n    \"confidence\": 0.9,\n    \"user_input\": \"用户原始输入\",\n    \"scene_name\": \"场景名称\",\n    \"matched_rooms\": [],\n    \"device_types\": [],\n    \"devices\": [],\n    \"ai_respond\": \"根据用户的原始输入进行回答（收到指令，即将执行用户的指令），并保持与用户的原始输入语言一致\"\n}\n\n### 对于状态查询类指令（重要 - 必须生成完整设备矩阵）：\n{\n    \"intent\": \"Query Device Status\",\n    \"confidence\": 0.9,\n    \"user_input\": \"用户原始输入\", \n    \"matched_rooms\": [\"房间1\", \"房间2\", \"房间3\"],\n    \"device_types\": [\"light\", \"climate\", \"fan\", \"media_player\", \"cover\", \"switch\", \"sensor\", \"binary_sensor\"],\n    \"devices\": [\n        // 严格按照以下模式生成：为每个matched_rooms中的房间，生成8个设备查询条目\n        // 房间1的所有设备类型\n        {\"room_name\": \"房间1\", \"device_type\": \"light\", \"device_name\": \"light\", \"action\": \"Check Status\", \"service\": \"get_state\", \"data\": {}},\n        {\"room_name\": \"房间1\", \"device_type\": \"climate\", \"device_name\": \"climate\", \"action\": \"Check Status\", \"service\": \"get_state\", \"data\": {}},\n        {\"room_name\": \"房间1\", \"device_type\": \"fan\", \"device_name\": \"fan\", \"action\": \"Check Status\", \"service\": \"get_state\", \"data\": {}},\n        {\"room_name\": \"房间1\", \"device_type\": \"media_player\", \"device_name\": \"media_player\", \"action\": \"Check Status\", \"service\": \"get_state\", \"data\": {}},\n        {\"room_name\": \"房间1\", \"device_type\": \"cover\", \"device_name\": \"cover\", \"action\": \"Check Status\", \"service\": \"get_state\", \"data\": {}},\n        {\"room_name\": \"房间1\", \"device_type\": \"switch\", \"device_name\": \"switch\", \"action\": \"Check Status\", \"service\": \"get_state\", \"data\": {}},\n        {\"room_name\": \"房间1\", \"device_type\": \"sensor\", \"device_name\": \"sensor\", \"action\": \"Check Status\", \"service\": \"get_state\", \"data\": {}},\n        {\"room_name\": \"房间1\", \"device_type\": \"binary_sensor\", \"device_name\": \"binary_sensor\", \"action\": \"Check Status\", \"service\": \"get_state\", \"data\": {}},\n        // 房间2的所有设备类型\n        {\"room_name\": \"房间2\", \"device_type\": \"light\", \"device_name\": \"light\", \"action\": \"Check Status\", \"service\": \"get_state\", \"data\": {}},\n        {\"room_name\": \"房间2\", \"device_type\": \"climate\", \"device_name\": \"climate\", \"action\": \"Check Status\", \"service\": \"get_state\", \"data\": {}},\n        // ... 继续为房间2生成剩余6种设备类型\n        // 房间3的所有设备类型 - 重复相同模式\n        // ... \n        // 总数量 = matched_rooms数量 × 8种设备类型\n    ],\n    \"ai_respond\": \"根据用户的原始输入进行回答，保持与用户的原始输入语言一致\"\n}\n\n## 重要要求\n1. **必须提取所有参数**：仔细分析用户输入中的颜色、亮度、温度、速度等参数，全部提取到data字段\n2. **action字段必须准确**：根据用户的完整意图组合动作名称，如\"Turn On and Set Color and Brightness\"\n3. **data字段不能为空**：如果用户提到了参数（颜色、亮度等），必须在data中体现\n4. **设备状态查询的完整性要求（强制执行）**：\n   - ⚠️ 当意图为\"Query Device Status\"时，这是强制要求，不可省略\n   - device_types数组必须包含完整的8种设备类型：[\"light\", \"climate\", \"fan\", \"media_player\", \"cover\", \"switch\", \"sensor\", \"binary_sensor\"]\n   - devices数组必须按照严格的矩阵模式生成：\n     * 遍历matched_rooms中的每个房间\n     * 为每个房间生成8个设备查询条目（对应8种设备类型）\n     * 每个条目格式固定：\"room_name\": \"房间名\", \"device_type\": \"设备类型\", \"device_name\": \"设备类型\", \"action\": \"Check Status\", \"service\": \"get_state\", \"data\": {}\n   - 计算公式：devices数组长度 = matched_rooms数量 × 8\n   - 示例：9个房间 × 8种设备 = 72个devices条目\n   - ⚠️ 如果devices数组长度不等于matched_rooms数量×8，则输出不符合要求\n5. 必须使用可用房间列表中的实际房间名称\n6. 当用户使用通用房间名称（如\"卧室\"）且有多个匹配房间时，**必须在matched_rooms中包含所有匹配的房间**\n7. devices数组中应为每个匹配房间创建相应的设备条目\n8. device_type必须使用Home Assistant域名\n9. 输出必须是有效JSON格式\n10. ai_respond的语言需要与用户原始输入的语言一致,如果原始输入语言为英文，则ai_respond也用英文。\n   要有礼貌的回复\n   - 示例：“好的，即将为您打开主卧灯”`,\n    \n    \"user_prompt\": userPrompt,\n    \n    \"options\": {\n        \"model\": \"gpt-3.5-turbo\",\n        \"temperature\": 0.3,\n        \"max_tokens\": 2000\n    }\n};\n\n// 添加调试信息（可选）\nmsg.debug = {\n    \"user_input\": inputText,\n    \"available_rooms\": haRoom,\n    \"timestamp\": new Date().toISOString()\n};\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1280,
+        "y": 280,
+        "wires": [
+            [
+                "caaa1a12ac3db437"
+            ]
+        ]
+    },
+    {
+        "id": "63e1a548d23e2157",
+        "type": "http request",
+        "z": "9c20bd5384c80812",
+        "name": "设备控制",
+        "method": "POST",
+        "ret": "txt",
+        "paytoqs": "ignore",
+        "url": "http://localhost:3000/api/home_assistant/home_assistant/batch-control",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [
+            {
+                "keyType": "other",
+                "keyValue": "Content-Type",
+                "valueType": "other",
+                "valueValue": "application/json"
+            }
+        ],
+        "x": 2460,
+        "y": 260,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "e6fd3b153db3801a",
+        "type": "http request",
+        "z": "9c20bd5384c80812",
+        "name": "查找设备ID",
+        "method": "POST",
+        "ret": "txt",
+        "paytoqs": "ignore",
+        "url": "http://localhost:3000/api/home_assistant/home_assistant/match-devices",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 2090,
+        "y": 260,
+        "wires": [
+            [
+                "1a52be49b03626d0",
+                "fdb7f0a49b8f4d98"
+            ]
+        ]
+    },
+    {
+        "id": "45c7a78f4454e8fa",
+        "type": "function",
+        "z": "9c20bd5384c80812",
+        "name": "设备控制",
+        "func": "// Node-RED Function Node - 提取devices并输出JSON对象\n// 输入: msg.payload 包含完整的智能家居控制数据\n// 输出: msg.payload 只包含devices数组的JSON对象\n\n// 检查输入数据是否存在\nif (!msg.payload) {\n    node.error(\"输入数据为空\", msg);\n    return null;\n}\n\ntry {\n    // 解析输入数据（如果是字符串）\n    let inputData;\n    if (typeof msg.payload === 'string') {\n        inputData = JSON.parse(msg.payload);\n    } else {\n        inputData = msg.payload;\n    }\n    \n    // 检查是否包含devices字段\n    if (!inputData.devices || !Array.isArray(inputData.devices)) {\n        node.warn(\"输入数据中没有找到devices数组\");\n        msg.payload = { devices: [] };\n        return msg;\n    }\n    \n    // 直接输出devices数组\n    msg.payload = inputData.devices;\n    \n    // 记录处理信息\n    node.log(`成功提取 ${inputData.devices.length} 个设备`);\n    \n    return msg;\n    \n} catch (error) {\n    node.error(\"处理数据时出错: \" + error.message, msg);\n    return null;\n}",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1940,
+        "y": 260,
+        "wires": [
+            [
+                "e6fd3b153db3801a"
+            ]
+        ]
+    },
+    {
+        "id": "1a52be49b03626d0",
+        "type": "function",
+        "z": "9c20bd5384c80812",
+        "name": "组织控制指令",
+        "func": "// Node-RED Function Node - 转换为Home Assistant标准指令格式\n// 优化版本：处理matched_entities和entity_id提取\n\n// 安全的属性访问函数\nfunction safeGet(obj, path, defaultValue = null) {\n    try {\n        return path.split('.').reduce((current, key) => current && current[key], obj) || defaultValue;\n    } catch (e) {\n        return defaultValue;\n    }\n}\n\n// 记录调试信息\nnode.log(\"=== 开始处理数据 ===\");\nnode.log(\"输入类型: \" + typeof msg.payload);\n\n// 检查基本输入\nif (!msg.payload) {\n    node.error(\"msg.payload为空\", msg);\n    return null;\n}\n\nlet inputData;\ntry {\n    // 处理输入数据\n    if (typeof msg.payload === 'string') {\n        inputData = JSON.parse(msg.payload);\n        node.log(\"解析JSON字符串成功\");\n    } else if (typeof msg.payload === 'object') {\n        inputData = msg.payload;\n        node.log(\"直接使用对象数据\");\n    } else {\n        node.error(\"不支持的数据类型: \" + typeof msg.payload, msg);\n        return null;\n    }\n} catch (parseError) {\n    node.error(\"JSON解析失败: \" + parseError.message, msg);\n    return null;\n}\n\n// 安全检查数据结构\nnode.log(\"检查数据结构...\");\nconst success = safeGet(inputData, 'success');\nconst data = safeGet(inputData, 'data');\nconst commands = safeGet(inputData, 'data.commands');\n\nnode.log(\"success: \" + success);\nnode.log(\"data存在: \" + (data !== null));\nnode.log(\"commands存在: \" + (commands !== null));\nnode.log(\"commands是数组: \" + Array.isArray(commands));\n\nif (!success) {\n    node.error(\"success字段为false或不存在\", msg);\n    return null;\n}\n\nif (!data) {\n    node.error(\"data字段不存在\", msg);\n    node.log(\"输入数据的键: \" + JSON.stringify(Object.keys(inputData || {})));\n    return null;\n}\n\nif (!Array.isArray(commands)) {\n    node.error(\"commands字段不存在或不是数组\", msg);\n    node.log(\"data对象的键: \" + JSON.stringify(Object.keys(data || {})));\n    return null;\n}\n\nnode.log(\"找到 \" + commands.length + \" 个命令\");\n\n// 设备类型映射配置\nconst deviceMappings = {\n    light: {\n        services: {\n            \"turn_on\": \"turn_on\",\n            \"turn_off\": \"turn_off\",\n            \"toggle\": \"toggle\",\n            \"dim\": \"turn_on\",\n            \"brighten\": \"turn_on\",\n            \"set_brightness\": \"turn_on\"\n        },\n        dataMapping: {\n            \"brightness_pct\": (value) => ({ \"brightness\": Math.round(value * 255 / 100) }),\n            \"brightness\": (value) => ({ \"brightness\": Math.max(0, Math.min(255, value)) }),\n            \"color_name\": (value) => ({ \"color_name\": value }),\n            \"rgb_color\": (value) => ({ \"rgb_color\": value }),\n            \"hs_color\": (value) => ({ \"hs_color\": value }),\n            \"color_temp\": (value) => ({ \"color_temp\": value }),\n            \"kelvin\": (value) => ({ \"kelvin\": value }),\n            \"effect\": (value) => ({ \"effect\": value })\n        }\n    },\n    switch: {\n        services: {\n            \"turn_on\": \"turn_on\",\n            \"turn_off\": \"turn_off\",\n            \"toggle\": \"toggle\"\n        },\n        dataMapping: {}\n    },\n    fan: {\n        services: {\n            \"turn_on\": \"turn_on\",\n            \"turn_off\": \"turn_off\",\n            \"toggle\": \"toggle\",\n            \"set_speed\": \"set_percentage\"\n        },\n        dataMapping: {\n            \"speed\": (value) => ({ \"percentage\": Math.round(value * 10) }),\n            \"percentage\": (value) => ({ \"percentage\": Math.max(0, Math.min(100, value)) })\n        }\n    },\n    climate: {\n        services: {\n            \"turn_on\": \"turn_on\",\n            \"turn_off\": \"turn_off\",\n            \"set_temperature\": \"set_temperature\",\n            \"set_hvac_mode\": \"set_hvac_mode\"\n        },\n        dataMapping: {\n            \"temperature\": (value) => ({ \"temperature\": value }),\n            \"target_temp_high\": (value) => ({ \"target_temp_high\": value }),\n            \"target_temp_low\": (value) => ({ \"target_temp_low\": value }),\n            \"hvac_mode\": (value) => ({ \"hvac_mode\": value })\n        }\n    },\n    cover: {\n        services: {\n            \"open\": \"open_cover\",\n            \"close\": \"close_cover\",\n            \"stop\": \"stop_cover\",\n            \"set_position\": \"set_cover_position\"\n        },\n        dataMapping: {\n            \"position\": (value) => ({ \"position\": Math.max(0, Math.min(100, value)) })\n        }\n    },\n    media_player: {\n        services: {\n            \"turn_on\": \"turn_on\",\n            \"turn_off\": \"turn_off\",\n            \"play\": \"media_play\",\n            \"pause\": \"media_pause\",\n            \"stop\": \"media_stop\",\n            \"set_volume\": \"volume_set\"\n        },\n        dataMapping: {\n            \"volume_level\": (value) => ({ \"volume_level\": Math.max(0, Math.min(1, value / 100)) })\n        }\n    }\n};\n\n// 处理命令\nconst haCommands = [];\n\ntry {\n    for (let i = 0; i < commands.length; i++) {\n        const command = commands[i];\n        node.log(`处理命令 ${i + 1}: ${command.device_type} - ${command.action}`);\n        \n        const deviceType = safeGet(command, 'device_type');\n        const service = safeGet(command, 'service');\n        const data = safeGet(command, 'data', {});\n        const matchedEntities = safeGet(command, 'matched_entities', []);\n        \n        // 检查必要字段\n        if (!deviceType || !service) {\n            node.warn(`命令 ${i + 1} 缺少必要字段 device_type 或 service，跳过`);\n            continue;\n        }\n        \n        // 获取设备映射配置\n        const deviceConfig = deviceMappings[deviceType];\n        if (!deviceConfig) {\n            node.warn(`不支持的设备类型: ${deviceType}`);\n            continue;\n        }\n        \n        // 处理entity_id：优先使用command.entity_id，如果为null则从matched_entities获取\n        let entityId = safeGet(command, 'entity_id');\n        let deviceName = safeGet(command, 'device_name');\n        \n        if (!entityId && Array.isArray(matchedEntities) && matchedEntities.length > 0) {\n            // 从matched_entities中提取信息，为每个匹配的实体创建命令\n            for (let j = 0; j < matchedEntities.length; j++) {\n                const entity = matchedEntities[j];\n                const currentEntityId = safeGet(entity, 'entity_id');\n                const currentDeviceName = safeGet(entity, 'device_name') || safeGet(entity, 'name');\n                \n                if (!currentEntityId) {\n                    node.warn(`匹配的实体 ${j + 1} 缺少 entity_id，跳过`);\n                    continue;\n                }\n                \n                // 创建HA命令\n                const haCommand = createHACommand(\n                    currentEntityId,\n                    currentDeviceName || `Entity ${j + 1}`,\n                    service,\n                    data,\n                    command.action,\n                    deviceType,\n                    deviceConfig\n                );\n                \n                if (haCommand) {\n                    haCommands.push(haCommand);\n                    node.log(`为实体 ${currentEntityId} 创建命令成功`);\n                }\n            }\n        } else if (entityId) {\n            // 直接使用提供的entity_id\n            const haCommand = createHACommand(\n                entityId,\n                deviceName || \"Unknown Device\",\n                service,\n                data,\n                command.action,\n                deviceType,\n                deviceConfig\n            );\n            \n            if (haCommand) {\n                haCommands.push(haCommand);\n                node.log(`为实体 ${entityId} 创建命令成功`);\n            }\n        } else {\n            node.warn(`命令 ${i + 1} 没有有效的 entity_id 或 matched_entities，跳过`);\n        }\n    }\n    \n    // 创建HA命令的函数\n    function createHACommand(entityId, deviceName, service, data, action, deviceType, deviceConfig) {\n        // 映射服务名称\n        const haService = deviceConfig.services[service] || service;\n        \n        // 构建HA命令对象\n        const haCommand = {\n            entity_id: entityId,\n            device_name: deviceName,\n            service: haService,\n            data: {}\n        };\n        \n        // 转换数据字段\n        for (const [key, value] of Object.entries(data)) {\n            const mapper = deviceConfig.dataMapping[key];\n            if (mapper && typeof mapper === 'function') {\n                const mappedData = mapper(value);\n                Object.assign(haCommand.data, mappedData);\n            } else {\n                haCommand.data[key] = value;\n            }\n        }\n        \n        // 特殊处理：根据action进行额外的数据处理\n        if (action && deviceType === 'light') {\n            const actionLower = action.toLowerCase();\n            if ((actionLower.includes('dim') || actionLower.includes('暗')) && !haCommand.data.brightness) {\n                haCommand.data.brightness = 128; // 默认50%亮度\n            }\n            if ((actionLower.includes('bright') || actionLower.includes('亮')) && !haCommand.data.brightness) {\n                haCommand.data.brightness = 255; // 全亮\n            }\n        }\n        \n        // 如果data为空对象，移除该字段以简化输出\n        if (Object.keys(haCommand.data).length === 0) {\n            delete haCommand.data;\n        }\n        \n        return haCommand;\n    }\n    \n    // 设置输出\n    msg.payload = haCommands;\n    \n    node.log(`=== 处理完成，生成 ${haCommands.length} 个HA命令 ===`);\n    \n    // 输出调试信息\n    if (haCommands.length > 0) {\n        node.log(\"输出预览: \" + JSON.stringify(haCommands[0], null, 2));\n    }\n    \n    return msg;\n    \n} catch (error) {\n    node.error(\"处理命令时出错: \" + error.message, msg);\n    node.error(\"错误堆栈: \" + error.stack);\n    return null;\n}",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 2280,
+        "y": 260,
+        "wires": [
+            [
+                "63e1a548d23e2157"
+            ]
+        ]
+    },
+    {
+        "id": "7f3137f07c9c7d60",
+        "type": "function",
+        "z": "9c20bd5384c80812",
+        "name": "提取用户回复",
+        "func": "// Node-RED Function Node - 提取ai_respond字段\n// 输入: OpenAI API响应格式的数据\n// 输出: {\"text\": \"响应内容\"} 或错误消息\n\n// 安全的属性访问函数\nfunction safeGet(obj, path, defaultValue = null) {\n    try {\n        return path.split('.').reduce((current, key) => current && current[key], obj) || defaultValue;\n    } catch (e) {\n        return defaultValue;\n    }\n}\n\n// 默认错误响应\nconst errorResponse = {\"text\": \"Sorry，something wrong, try again later\"};\n\n// 检查输入数据\nif (!msg.payload) {\n    node.error(\"输入数据为空\", msg);\n    msg.payload = errorResponse;\n    return msg;\n}\n\ntry {\n    let inputData;\n    \n    // 处理输入数据\n    if (typeof msg.payload === 'string') {\n        inputData = JSON.parse(msg.payload);\n    } else {\n        inputData = msg.payload;\n    }\n    \n    // 记录调试信息\n    node.log(\"开始提取AI响应...\");\n    \n    // 方法1: 直接从response_text中提取（如果存在）\n    let responseText = safeGet(inputData, 'response_text');\n    \n    // 方法2: 从message.content中提取\n    if (!responseText) {\n        responseText = safeGet(inputData, 'message.content');\n    }\n    \n    // 方法3: 从data.choices[0].message.content中提取\n    if (!responseText) {\n        responseText = safeGet(inputData, 'data.choices.0.message.content');\n    }\n    \n    if (!responseText) {\n        node.warn(\"未找到响应文本内容\");\n        msg.payload = errorResponse;\n        return msg;\n    }\n    \n    // 解析响应文本中的JSON\n    let parsedContent;\n    try {\n        parsedContent = JSON.parse(responseText);\n    } catch (parseError) {\n        node.error(\"解析响应JSON失败: \" + parseError.message);\n        msg.payload = errorResponse;\n        return msg;\n    }\n    \n    // 提取ai_respond字段\n    const aiRespond = safeGet(parsedContent, 'ai_respond');\n    \n    if (!aiRespond) {\n        node.warn(\"未找到ai_respond字段\");\n        node.log(\"可用字段: \" + JSON.stringify(Object.keys(parsedContent || {})));\n        msg.payload = errorResponse;\n        return msg;\n    }\n    \n    // 构建输出\n    const output = {\n        \"text\": aiRespond\n    };\n    \n    msg.payload = output;\n    node.log(\"成功提取AI响应: \" + aiRespond);\n    \n    return msg;\n    \n} catch (error) {\n    node.error(\"处理数据时出错: \" + error.message, msg);\n    msg.payload = errorResponse;\n    return msg;\n}",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1680,
+        "y": 360,
+        "wires": [
+            [
+                "0252178b6428b883"
+            ]
+        ]
+    },
+    {
+        "id": "ed34c77516a1209e",
+        "type": "json",
+        "z": "9c20bd5384c80812",
+        "name": "",
+        "property": "payload",
+        "action": "",
+        "pretty": false,
+        "x": 1510,
+        "y": 360,
+        "wires": [
+            [
+                "7f3137f07c9c7d60"
+            ]
+        ]
+    },
+    {
+        "id": "0252178b6428b883",
+        "type": "http request",
+        "z": "9c20bd5384c80812",
+        "name": "Telegram回复",
+        "method": "POST",
+        "ret": "txt",
+        "paytoqs": "ignore",
+        "url": "http://localhost:3000/api/telegram/telegram/reply/last",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [
+            {
+                "keyType": "other",
+                "keyValue": "Content-Type",
+                "valueType": "other",
+                "valueValue": "application/json"
+            }
+        ],
+        "x": 1880,
+        "y": 360,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "8268e88e0ee870e0",
+        "type": "http request",
+        "z": "9c20bd5384c80812",
+        "name": "Telegram回复",
+        "method": "POST",
+        "ret": "txt",
+        "paytoqs": "ignore",
+        "url": "http://localhost:3000/api/telegram/telegram/reply/last",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [
+            {
+                "keyType": "other",
+                "keyValue": "Content-Type",
+                "valueType": "other",
+                "valueValue": "application/json"
+            }
+        ],
+        "x": 2960,
+        "y": 200,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "ec22e194cd2bf602",
+        "type": "function",
+        "z": "9c20bd5384c80812",
+        "name": "状态反馈",
+        "func": "// Function Node Code - Natural Language Device Status Description (优化排版版)\nfunction parseHomeAssistantData(inputData) {\n    \n    // Helper function to get color name from RGB values\n    function getColorName(r, g, b) {\n        const colors = [\n            { name: \"red\", rgb: [255, 0, 0] },\n            { name: \"green\", rgb: [0, 255, 0] },\n            { name: \"blue\", rgb: [0, 0, 255] },\n            { name: \"yellow\", rgb: [255, 255, 0] },\n            { name: \"cyan\", rgb: [0, 255, 255] },\n            { name: \"magenta\", rgb: [255, 0, 255] },\n            { name: \"orange\", rgb: [255, 165, 0] },\n            { name: \"purple\", rgb: [128, 0, 128] },\n            { name: \"pink\", rgb: [255, 192, 203] },\n            { name: \"white\", rgb: [255, 255, 255] },\n            { name: \"warm white\", rgb: [255, 235, 205] }\n        ];\n        \n        let minDistance = Infinity;\n        let closestColor = \"unknown color\";\n        \n        for (const color of colors) {\n            const distance = Math.sqrt(\n                Math.pow(r - color.rgb[0], 2) +\n                Math.pow(g - color.rgb[1], 2) +\n                Math.pow(b - color.rgb[2], 2)\n            );\n            \n            if (distance < minDistance) {\n                minDistance = distance;\n                closestColor = color.name;\n            }\n        }\n        \n        return closestColor;\n    }\n    \n    // Helper function to get color temperature name\n    function getColorTempName(temp) {\n        if (temp < 2700) return \"very warm white\";\n        if (temp < 3000) return \"warm white\";\n        if (temp < 4000) return \"soft white\";\n        if (temp < 5000) return \"neutral white\";\n        if (temp < 6500) return \"cool white\";\n        return \"daylight white\";\n    }\n    \n    // Helper function to get color from hue\n    function getColorFromHue(hue, saturation) {\n        if (saturation < 20) return \"white\";\n        \n        if (hue < 15 || hue >= 345) return \"red\";\n        if (hue < 45) return \"orange\";\n        if (hue < 75) return \"yellow\";\n        if (hue < 165) return \"green\";\n        if (hue < 195) return \"cyan\";\n        if (hue < 255) return \"blue\";\n        if (hue < 285) return \"purple\";\n        if (hue < 345) return \"magenta\";\n        \n        return \"unknown color\";\n    }\n    \n    // Helper function to extract room name from friendly_name or entity_id\n    function extractRoomName(friendlyName, entityId) {\n        let roomName = \"\";\n        \n        // 先尝试从friendly_name中提取房间名\n        if (friendlyName) {\n            const roomPatterns = [\n                /^([^-]+)\\s*-/,  // \"Living Room - Light\" 格式\n                /^([^_]+)\\s*_/,  // \"Living_Room_Light\" 格式\n                /^(.*?)\\s+(Light|Power|Temperature|Humidity|Motion)/i  // \"Living Room Light\" 格式\n            ];\n            \n            for (const pattern of roomPatterns) {\n                const match = friendlyName.match(pattern);\n                if (match) {\n                    roomName = match[1].trim();\n                    break;\n                }\n            }\n            \n            // 如果没有匹配到，检查是否包含 \"Room\" 或 \"room\"\n            if (!roomName) {\n                const roomMatch = friendlyName.match(/(.*?room)/i);\n                if (roomMatch) {\n                    roomName = roomMatch[1];\n                }\n            }\n        }\n        \n        // 如果还没有找到房间名，从entity_id中提取\n        if (!roomName) {\n            const entityMatch = entityId.match(/^[^.]+\\.([^_]+)_?/);\n            if (entityMatch) {\n                roomName = entityMatch[1].replace(/_/g, ' ');\n            }\n        }\n        \n        // 标准化房间名（统一大小写格式）\n        if (roomName) {\n            return roomName.toLowerCase()\n                          .split(' ')\n                          .map(word => word.charAt(0).toUpperCase() + word.slice(1))\n                          .join(' ');\n        }\n        \n        return \"Unknown Room\";\n    }\n    \n    // Helper function to extract device type from friendly_name or entity_id\n    function extractDeviceType(friendlyName, entityId) {\n        if (friendlyName) {\n            // 查找常见设备类型关键词\n            const deviceTypes = [\n                'light', 'power', 'temperature', 'temp', 'humidity', 'motion', \n                'switch', 'fan', 'sensor', 'binary_sensor'\n            ];\n            \n            const lowerName = friendlyName.toLowerCase();\n            for (const type of deviceTypes) {\n                if (lowerName.includes(type)) {\n                    return type === 'temp' ? 'temperature' : type;\n                }\n            }\n        }\n        \n        // 从entity_id中提取设备类型\n        const domain = entityId.split('.')[0];\n        return domain;\n    }\n    \n    try {\n        // Parse JSON string if input is string\n        const data = typeof inputData === 'string' ? JSON.parse(inputData) : inputData;\n        \n        // Check if operation succeeded\n        if (!data.success) {\n            return \"Operation failed, unable to retrieve device information\";\n        }\n        \n        // 按房间分组设备\n        const roomDevices = {};\n        \n        if (data.data && data.data.states) {\n            data.data.states.forEach(state => {\n                const friendlyName = state.attributes?.friendly_name;\n                const roomName = extractRoomName(friendlyName, state.entity_id);\n                const deviceType = extractDeviceType(friendlyName, state.entity_id);\n                \n                if (!roomDevices[roomName]) {\n                    roomDevices[roomName] = [];\n                }\n                \n                let deviceInfo = \"\";\n                \n                if (state.state === \"on\" && state.attributes) {\n                    // 灯光设备的详细信息\n                    if (deviceType === \"light\") {\n                        deviceInfo = \"Light is on\";\n                        \n                        // Add brightness information\n                        if (state.attributes.brightness !== undefined) {\n                            const brightnessPercent = Math.round((state.attributes.brightness / 255) * 100);\n                            deviceInfo += ` (${brightnessPercent}% brightness)`;\n                        }\n                        \n                        // Add color information\n                        if (state.attributes.rgb_color) {\n                            const [r, g, b] = state.attributes.rgb_color;\n                            const colorName = getColorName(r, g, b);\n                            deviceInfo += ` ${colorName}`;\n                        } else if (state.attributes.color_temp) {\n                            const tempName = getColorTempName(state.attributes.color_temp);\n                            deviceInfo += ` ${tempName}`;\n                        } else if (state.attributes.hs_color) {\n                            const [hue, sat] = state.attributes.hs_color;\n                            const colorName = getColorFromHue(hue, sat);\n                            deviceInfo += ` ${colorName}`;\n                        }\n                    } else {\n                        // 其他设备\n                        const deviceName = deviceType.charAt(0).toUpperCase() + deviceType.slice(1);\n                        deviceInfo = `${deviceName} is on`;\n                    }\n                } else if (state.state === \"off\") {\n                    const deviceName = deviceType.charAt(0).toUpperCase() + deviceType.slice(1);\n                    deviceInfo = `${deviceName} is off`;\n                } else if (state.state === \"unavailable\") {\n                    const deviceName = deviceType.charAt(0).toUpperCase() + deviceType.slice(1);\n                    deviceInfo = `${deviceName} is unavailable`;\n                } else {\n                    // Handle numeric values (sensors)\n                    if (!isNaN(parseFloat(state.state))) {\n                        const value = parseFloat(state.state);\n                        const unit = state.attributes?.unit_of_measurement || \"\";\n                        \n                        if (deviceType.includes('temp')) {\n                            deviceInfo = `temp is ${value}${unit}`;\n                        } else if (deviceType.includes('humidity')) {\n                            deviceInfo = `humidity is ${value}${unit}`;\n                        } else if (deviceType.includes('power')) {\n                            deviceInfo = `power is ${value}${unit}`;\n                        } else {\n                            const deviceName = deviceType.replace(/_/g, ' ');\n                            deviceInfo = `${deviceName} is ${value}${unit}`;\n                        }\n                    } else {\n                        // Handle other states\n                        const deviceName = deviceType.charAt(0).toUpperCase() + deviceType.slice(1);\n                        deviceInfo = `${deviceName} is ${state.state}`;\n                    }\n                }\n                \n                roomDevices[roomName].push(deviceInfo);\n            });\n        }\n        \n        if (Object.keys(roomDevices).length === 0) {\n            return \"No devices found in response\";\n        }\n        \n        // 格式化输出\n        const formattedOutput = [];\n        \n        for (const [roomName, devices] of Object.entries(roomDevices)) {\n            formattedOutput.push(`【${roomName}】`);\n            devices.forEach(device => {\n                formattedOutput.push(`  - ${device}`);\n            });\n            formattedOutput.push(\"\"); // 添加空行分隔不同房间\n        }\n        \n        // 移除最后的空行\n        if (formattedOutput[formattedOutput.length - 1] === \"\") {\n            formattedOutput.pop();\n        }\n        \n        return formattedOutput.join('\\n');\n        \n    } catch (error) {\n        return `Data parsing failed: ${error.message}`;\n    }\n}\n\n// Node-RED Function Node usage:\nconst parsedResult = parseHomeAssistantData(msg.payload);\nmsg.payload = {\"text\": parsedResult};\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 2780,
+        "y": 200,
+        "wires": [
+            [
+                "8268e88e0ee870e0"
+            ]
+        ]
+    },
+    {
+        "id": "d5112069e62f4661",
+        "type": "http request",
+        "z": "9c20bd5384c80812",
+        "name": "查找设备ID",
+        "method": "POST",
+        "ret": "txt",
+        "paytoqs": "ignore",
+        "url": "http://localhost:3000/api/home_assistant/home_assistant/match-devices",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 2090,
+        "y": 200,
+        "wires": [
+            [
+                "fdb7f0a49b8f4d98"
+            ]
+        ]
+    },
+    {
+        "id": "b0e9db3c014e3c98",
+        "type": "function",
+        "z": "9c20bd5384c80812",
+        "name": "查询控制",
+        "func": "// Node-RED Function Node - 提取devices并输出JSON对象\n// 输入: msg.payload 包含完整的智能家居控制数据\n// 输出: msg.payload 只包含devices数组的JSON对象\n\n// 检查输入数据是否存在\nif (!msg.payload) {\n    node.error(\"输入数据为空\", msg);\n    return null;\n}\n\ntry {\n    // 解析输入数据（如果是字符串）\n    let inputData;\n    if (typeof msg.payload === 'string') {\n        inputData = JSON.parse(msg.payload);\n    } else {\n        inputData = msg.payload;\n    }\n    \n    // 检查是否包含devices字段\n    if (!inputData.devices || !Array.isArray(inputData.devices)) {\n        node.warn(\"输入数据中没有找到devices数组\");\n        msg.payload = { devices: [] };\n        return msg;\n    }\n    \n    // 直接输出devices数组\n    msg.payload = inputData.devices;\n    \n    // 记录处理信息\n    node.log(`成功提取 ${inputData.devices.length} 个设备`);\n    \n    return msg;\n    \n} catch (error) {\n    node.error(\"处理数据时出错: \" + error.message, msg);\n    return null;\n}",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1940,
+        "y": 200,
+        "wires": [
+            [
+                "d5112069e62f4661"
+            ]
+        ]
+    },
+    {
+        "id": "fdb7f0a49b8f4d98",
+        "type": "function",
+        "z": "9c20bd5384c80812",
+        "name": "提取entities id",
+        "func": "// 获取输入数据\nlet inputData = msg.payload;\n\n// 如果输入是字符串，尝试解析为 JSON\nif (typeof inputData === 'string') {\n    try {\n        inputData = JSON.parse(inputData);\n    } catch (parseError) {\n        msg.payload = { entity_ids: [] };\n        node.error(\"JSON 解析失败: \" + parseError.message);\n        return msg;\n    }\n}\n\n// 初始化结果数组\nlet entityIds = [];\n\ntry {\n    // 检查数据结构并提取 entity_id\n    if (inputData && \n        inputData.success === true && \n        inputData.data && \n        Array.isArray(inputData.data.commands)) {\n        \n        // 遍历 commands 数组，提取 entity_id\n        inputData.data.commands.forEach(command => {\n            if (command) {\n                // 如果有直接的 entity_id，使用它\n                if (command.entity_id && typeof command.entity_id === 'string') {\n                    entityIds.push(command.entity_id);\n                }\n                // 如果没有直接的 entity_id 或为 null，从 matched_entities 中提取\n                else if (Array.isArray(command.matched_entities)) {\n                    command.matched_entities.forEach(entity => {\n                        if (entity && entity.entity_id && typeof entity.entity_id === 'string') {\n                            entityIds.push(entity.entity_id);\n                        }\n                    });\n                }\n            }\n        });\n        \n        // 去重处理\n        entityIds = [...new Set(entityIds)];\n    }\n    \n} catch (error) {\n    node.error(\"处理数据时发生错误: \" + error.message);\n}\n\n// 直接输出指定格式的对象\nmsg.payload = {\n    entity_ids: entityIds\n};\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 2280,
+        "y": 200,
+        "wires": [
+            [
+                "3a33a551e956ef7e"
+            ]
+        ]
+    },
+    {
+        "id": "98bdd760bcabb737",
+        "type": "http request",
+        "z": "9c20bd5384c80812",
+        "name": "状态查询",
+        "method": "POST",
+        "ret": "txt",
+        "paytoqs": "ignore",
+        "url": "http://localhost:3000/api/home_assistant/home_assistant/entity-states",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [
+            {
+                "keyType": "other",
+                "keyValue": "Content-Type",
+                "valueType": "other",
+                "valueValue": "application/json"
+            }
+        ],
+        "x": 2620,
+        "y": 200,
+        "wires": [
+            [
+                "ec22e194cd2bf602"
+            ]
+        ]
+    },
+    {
+        "id": "3a33a551e956ef7e",
+        "type": "delay",
+        "z": "9c20bd5384c80812",
+        "name": "",
+        "pauseType": "delay",
+        "timeout": "1",
+        "timeoutUnits": "seconds",
+        "rate": "1",
+        "nbRateUnits": "1",
+        "rateUnits": "second",
+        "randomFirst": "1",
+        "randomLast": "5",
+        "randomUnits": "seconds",
+        "drop": false,
+        "allowrate": false,
+        "outputs": 1,
+        "x": 2460,
+        "y": 200,
+        "wires": [
+            [
+                "98bdd760bcabb737"
+            ]
+        ]
+    },
+    {
+        "id": "91254e945904a2fa",
+        "type": "function",
+        "z": "9c20bd5384c80812",
+        "name": "优化房间数据",
+        "func": "// Function Node Code - Room Data Parser (简化版)\nfunction parseRoomData(inputData) {\n    try {\n        // Parse JSON string if input is string\n        const data = typeof inputData === 'string' ? JSON.parse(inputData) : inputData;\n        \n        // Check if rooms data exists - 支持两种数据结构\n        const rooms = data.rooms || data.data?.rooms;\n        \n        if (!rooms || !Array.isArray(rooms)) {\n            return [{\"name\":\"\",\"floor_name\":\"\"}];\n        }\n        \n        // Extract room information - 简化输出格式\n        const roomList = rooms.map(room => ({\n            name: room.name || \"\",\n            floor_name: room.floor_id || \"\"\n        }));\n        \n        return roomList;\n        \n    } catch (error) {\n        return [{\"name\":\"\",\"floor_name\":\"\"}];\n    }\n}\n\n// Node-RED Function Node usage:\nconst parsedResult = parseRoomData(msg.payload);\nmsg.payload = parsedResult;\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 940,
+        "y": 220,
+        "wires": [
+            [
+                "c484aa7edcc975ac"
+            ]
+        ]
+    }
+]
