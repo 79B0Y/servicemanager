@@ -105,34 +105,6 @@ log "starting isg-credential-services installation process"
 mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"starting installation process\",\"timestamp\":$(date +%s)}"
 
 # -----------------------------------------------------------------------------
-# 读取服务依赖配置
-# -----------------------------------------------------------------------------
-log "reading service dependencies from serviceupdate.json"
-mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"reading service dependencies from serviceupdate.json\",\"timestamp\":$(date +%s)}"
-
-if [ ! -f "$SERVICEUPDATE_FILE" ]; then
-    log "serviceupdate.json not found, using default dependencies"
-    DEPENDENCIES='["nodejs","npm","git","curl","wget"]'
-else
-    DEPENDENCIES=$(jq -c ".services[] | select(.id==\"$SERVICE_ID\") | .install_dependencies // [\"nodejs\",\"npm\",\"git\",\"curl\",\"wget\"]" "$SERVICEUPDATE_FILE" 2>/dev/null || echo '["nodejs","npm","git","curl","wget"]')
-fi
-
-# 转换为 bash 数组
-if [ "$DEPENDENCIES" != "null" ] && [ -n "$DEPENDENCIES" ]; then
-    readarray -t DEPS_ARRAY < <(echo "$DEPENDENCIES" | jq -r '.[]' 2>/dev/null)
-else
-    DEPS_ARRAY=("nodejs" "npm" "git" "curl" "wget")
-fi
-
-# 确保数组不为空
-if [ ${#DEPS_ARRAY[@]} -eq 0 ]; then
-    DEPS_ARRAY=("nodejs" "npm" "git" "curl" "wget")
-fi
-
-log "installing required dependencies: ${DEPS_ARRAY[*]}"
-mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"installing required dependencies\",\"dependencies\":$DEPENDENCIES,\"timestamp\":$(date +%s)}"
-
-# -----------------------------------------------------------------------------
 # 安装系统依赖
 # -----------------------------------------------------------------------------
 log "installing system dependencies in proot container"
