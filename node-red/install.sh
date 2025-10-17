@@ -1,7 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
 # Node-RED 安装脚本
-# 版本: v1.0.0
+# 版本: v1.0.1
 # 功能: 在 proot Ubuntu 环境中安装 Node-RED
 # =============================================================================
 
@@ -120,13 +120,51 @@ log "开始安装 node-red"
 mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"starting installation process\",\"timestamp\":$(date +%s)}"
 
 # -----------------------------------------------------------------------------
+# 修复 dpkg 并更新系统
+# -----------------------------------------------------------------------------
+log "修复 dpkg 并更新系统"
+mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"fixing dpkg and updating system\",\"timestamp\":$(date +%s)}"
+
+if ! proot-distro login "$PROOT_DISTRO" -- bash -c "
+    source ~/.bashrc
+    
+    # 清理可能存在的锁文件
+    rm -f /var/lib/dpkg/lock-frontend 2>/dev/null || true
+    rm -f /var/lib/dpkg/lock 2>/dev/null || true
+    rm -f /var/cache/apt/archives/lock 2>/dev/null || true
+    
+    # 修复 dpkg
+    echo 'Fixing dpkg configuration...'
+    dpkg --configure -a
+    
+    # 修复损坏的包
+    echo 'Fixing broken packages...'
+    apt --fix-broken install -y
+    
+    # 更新包列表
+    echo 'Updating package lists...'
+    apt update
+    
+    # 升级系统
+    echo 'Upgrading system packages...'
+    apt upgrade -y
+"; then
+    log "dpkg 修复或系统更新失败"
+    mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"dpkg fix or system update failed\",\"timestamp\":$(date +%s)}"
+    record_install_history "FAILED" "unknown"
+    exit 1
+fi
+
+log "dpkg 修复和系统更新完成"
+
+# -----------------------------------------------------------------------------
 # 读取服务依赖配置
 # -----------------------------------------------------------------------------
 log "读取服务依赖配置"
 mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"reading service dependencies from serviceupdate.json\",\"timestamp\":$(date +%s)}"
 
 if [ ! -f "$SERVICEUPDATE_FILE" ]; then
-    log "serviceupdate.json 不存在，使用默认依赖"
+    log "serviceupdate.json 不存在,使用默认依赖"
     DEPENDENCIES='["nodejs","npm"]'
 else
     DEPENDENCIES=$(jq -c ".services[] | select(.id==\"$SERVICE_ID\") | .install_dependencies // [\"nodejs\",\"npm\"]" "$SERVICEUPDATE_FILE" 2>/dev/null || echo '["nodejs","npm"]')
@@ -139,14 +177,13 @@ log "安装系统依赖: ${DEPS_ARRAY[*]}"
 mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"installing system dependencies\",\"dependencies\":$DEPENDENCIES,\"timestamp\":$(date +%s)}"
 
 # -----------------------------------------------------------------------------
-# 安装系统依赖（在 proot 容器内）
+# 安装系统依赖(在 proot 容器内)
 # -----------------------------------------------------------------------------
 log "在 proot 容器内安装系统依赖"
 mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"installing system dependencies in proot container\",\"timestamp\":$(date +%s)}"
 
 if ! proot-distro login "$PROOT_DISTRO" -- bash -c "
     source ~/.bashrc
-    apt update && apt upgrade -y
     apt install -y ${DEPS_ARRAY[*]}
 "; then
     log "系统依赖安装失败"
@@ -175,24 +212,11 @@ if [[ "$NODE_VERSION" == "not installed" ]] || [[ "$NPM_VERSION" == "not install
 fi
 
 # -----------------------------------------------------------------------------
-# 安装 pnpm 包管理器
-# -----------------------------------------------------------------------------
-log "安装 pnpm 包管理器"
-mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"installing pnpm package manager\",\"timestamp\":$(date +%s)}"
-
-if ! proot-distro login "$PROOT_DISTRO" -- bash -c "source ~/.bashrc && npm install -g pnpm"; then
-    log "pnpm 安装失败"
-    mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"pnpm installation failed\",\"timestamp\":$(date +%s)}"
-    record_install_history "FAILED" "unknown"
-    exit 1
-fi
-
-# -----------------------------------------------------------------------------
 # 获取目标版本
 # -----------------------------------------------------------------------------
 TARGET_VERSION=$(get_latest_version)
 if [ "$TARGET_VERSION" = "unknown" ]; then
-    TARGET_VERSION="4.0.9"  # 默认版本
+    TARGET_VERSION="4.1.1"  # 默认版本
     log "使用默认 Node-RED 版本: $TARGET_VERSION"
 else
     log "目标 Node-RED 版本: $TARGET_VERSION"
@@ -206,9 +230,24 @@ mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"messa
 
 if ! proot-distro login "$PROOT_DISTRO" -- bash -c "
     source ~/.bashrc
+    
+    # 清理旧的安装目录
+    rm -rf $NR_INSTALL_DIR
     mkdir -p $NR_INSTALL_DIR
     cd $NR_INSTALL_DIR
+    
+    # 使用 pnpm 初始化并安装 node-red
+    pnpm init
     pnpm add node-red@$TARGET_VERSION
+    
+    # 使用 node 直接修改 package.json 添加启动脚本
+    node -e \"
+const fs = require('fs');
+const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+pkg.scripts = pkg.scripts || {};
+pkg.scripts.start = 'node-red';
+fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+\"
 "; then
     log "Node-RED 安装失败"
     mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"node-red installation failed\",\"timestamp\":$(date +%s)}"
@@ -217,24 +256,10 @@ if ! proot-distro login "$PROOT_DISTRO" -- bash -c "
 fi
 
 # -----------------------------------------------------------------------------
-# 生成 package.json
+# 验证安装
 # -----------------------------------------------------------------------------
-log "生成 package.json 用于服务管理"
-mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"generating package.json\",\"timestamp\":$(date +%s)}"
-
-proot-distro login "$PROOT_DISTRO" -- bash -c "
-cd $NR_INSTALL_DIR
-cat > package.json << EOF
-{
-  \"scripts\": {
-    \"start\": \"node-red\"
-  },
-  \"dependencies\": {
-    \"node-red\": \"$TARGET_VERSION\"
-  }
-}
-EOF
-"
+log "验证 Node-RED 安装"
+mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"verifying node-red installation\",\"timestamp\":$(date +%s)}"
 
 # 获取安装的版本
 VERSION_STR=$(get_current_version)
@@ -266,7 +291,7 @@ EOF
 
 chmod +x "$RUN_FILE"
 
-# 创建 down 文件，禁用自动启动
+# 创建 down 文件,禁用自动启动
 touch "$DOWN_FILE"
 log "已创建 run 和 down 文件"
 
@@ -281,7 +306,7 @@ if [ -e "$SERVICE_CONTROL_DIR/supervise/control" ]; then
     echo u > "$SERVICE_CONTROL_DIR/supervise/control"
     rm -f "$DOWN_FILE"  # 移除 down 文件以启用服务
 else
-    log "控制文件不存在，直接启动 Node-RED 进行测试"
+    log "控制文件不存在,直接启动 Node-RED 进行测试"
     # 在后台启动 Node-RED 进行测试
     proot-distro login "$PROOT_DISTRO" -- bash -c "cd $NR_INSTALL_DIR && npm start" &
 fi
@@ -318,7 +343,7 @@ sleep 3
 if timeout 10 nc -z 127.0.0.1 "$NR_PORT" 2>/dev/null; then
     log "HTTP 接口验证成功"
 else
-    log "警告: HTTP 接口验证失败，但继续安装流程"
+    log "警告: HTTP 接口验证失败,但继续安装流程"
 fi
 
 # -----------------------------------------------------------------------------
@@ -354,7 +379,7 @@ record_install_history "SUCCESS" "$VERSION_STR"
 END_TIME=$(date +%s)
 DURATION=$((END_TIME - START_TIME))
 
-log "Node-RED 安装完成，耗时 ${DURATION}s"
+log "Node-RED 安装完成,耗时 ${DURATION}s"
 mqtt_report "isg/install/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"installed\",\"version\":\"$VERSION_STR\",\"duration\":$DURATION,\"timestamp\":$END_TIME}"
 
 log "安装摘要:"
