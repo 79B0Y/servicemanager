@@ -193,7 +193,7 @@ cat << 'EOF' > "$RUN_FILE"
 # 启动 isg-credential-services
 exec proot-distro login ubuntu -- bash -c '
     cd /root/isg-credential-services
-    node --expose-gc start-termux.js
+    npm start
 '
 EOF
 
