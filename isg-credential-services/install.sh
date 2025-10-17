@@ -41,6 +41,8 @@ CREDENTIAL_LISTEN_IP="0.0.0.0"
 # 脚本参数
 MAX_WAIT="${MAX_WAIT:-300}"
 INTERVAL="${INTERVAL:-5}"
+GIT_CLONE_RETRIES="${GIT_CLONE_RETRIES:-3}"  # git clone 重试次数
+GIT_CLONE_TIMEOUT="${GIT_CLONE_TIMEOUT:-60}"  # git clone 超时时间(秒)
 
 # =============================================================================
 # 工具函数
@@ -95,6 +97,38 @@ record_install_history() {
     echo "$timestamp INSTALL $status $version" >> "$INSTALL_HISTORY_FILE"
 }
 
+# Git clone 重试函数
+git_clone_with_retry() {
+    local repo_url="$1"
+    local target_dir="$2"
+    local max_retries="$GIT_CLONE_RETRIES"
+    local retry_count=0
+    
+    while [ $retry_count -lt $max_retries ]; do
+        retry_count=$((retry_count + 1))
+        log "attempting git clone (attempt $retry_count/$max_retries)"
+        
+        if timeout "$GIT_CLONE_TIMEOUT" git clone "$repo_url" "$target_dir" 2>&1 | tee -a "$LOG_FILE"; then
+            log "git clone succeeded on attempt $retry_count"
+            return 0
+        else
+            log "git clone failed on attempt $retry_count"
+            
+            if [ $retry_count -lt $max_retries ]; then
+                local wait_time=$((retry_count * 5))  # 递增等待时间: 5s, 10s, 15s
+                log "waiting ${wait_time}s before retry..."
+                sleep "$wait_time"
+                
+                # 清理失败的目录
+                rm -rf "$target_dir" 2>/dev/null || true
+            fi
+        fi
+    done
+    
+    log "git clone failed after $max_retries attempts"
+    return 1
+}
+
 # =============================================================================
 # 主程序开始
 # =============================================================================
@@ -112,16 +146,26 @@ mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"messa
 
 if ! proot-distro login "$PROOT_DISTRO" -- bash -c "
     apt-get update
-    apt-get install -y ${DEPS_ARRAY[*]}
+    # nodejs from nodesource already includes npm, so we don't need to install npm separately
+    apt-get install -y git curl nodejs
+    
+    # Verify npm is available
+    if ! command -v npm &> /dev/null; then
+        echo 'Error: npm not found after nodejs installation'
+        exit 1
+    fi
+    
+    echo \"Node.js version: \$(node --version)\"
+    echo \"npm version: \$(npm --version)\"
 "; then
     log "failed to install system dependencies"
-    mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"dependency installation failed\",\"dependencies\":$DEPENDENCIES,\"timestamp\":$(date +%s)}"
+    mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"dependency installation failed\",\"timestamp\":$(date +%s)}"
     record_install_history "FAILED" "unknown"
     exit 1
 fi
 
 # -----------------------------------------------------------------------------
-# 克隆和安装 isg-credential-services
+# 克隆和安装 isg-credential-services (带重试机制)
 # -----------------------------------------------------------------------------
 log "cloning and installing isg-credential-services"
 mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"cloning and installing isg-credential-services\",\"timestamp\":$(date +%s)}"
@@ -129,7 +173,45 @@ mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"messa
 if ! proot-distro login "$PROOT_DISTRO" -- bash -c "
     cd /root
     rm -rf isg-credential-services
-    git clone https://github.com/79B0Y/isg-credential-services.git
+    
+    # 定义 git clone 重试函数 (在容器内)
+    git_clone_with_retry() {
+        local repo_url=\$1
+        local target_dir=\$2
+        local max_retries=$GIT_CLONE_RETRIES
+        local timeout=$GIT_CLONE_TIMEOUT
+        local retry_count=0
+        
+        while [ \$retry_count -lt \$max_retries ]; do
+            retry_count=\$((retry_count + 1))
+            echo \"[$(date '+%F %T')] attempting git clone (attempt \$retry_count/\$max_retries)\"
+            
+            if timeout \$timeout git clone \$repo_url \$target_dir; then
+                echo \"[$(date '+%F %T')] git clone succeeded on attempt \$retry_count\"
+                return 0
+            else
+                echo \"[$(date '+%F %T')] git clone failed on attempt \$retry_count\"
+                
+                if [ \$retry_count -lt \$max_retries ]; then
+                    local wait_time=\$((retry_count * 5))
+                    echo \"[$(date '+%F %T')] waiting \${wait_time}s before retry...\"
+                    sleep \$wait_time
+                    rm -rf \$target_dir 2>/dev/null || true
+                fi
+            fi
+        done
+        
+        echo \"[$(date '+%F %T')] git clone failed after \$max_retries attempts\"
+        return 1
+    }
+    
+    # 执行 git clone (带重试)
+    if ! git_clone_with_retry 'https://github.com/79B0Y/isg-credential-services.git' 'isg-credential-services'; then
+        echo 'fatal: git clone failed after all retries'
+        exit 1
+    fi
+    
+    # 安装 npm 依赖
     cd isg-credential-services
     npm install
 "; then
