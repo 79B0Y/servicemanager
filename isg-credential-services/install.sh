@@ -225,13 +225,9 @@ mkdir -p "$SERVICE_CONTROL_DIR"
 cat << 'EOF' > "$RUN_FILE"
 #!/data/data/com.termux/files/usr/bin/sh
 # 启动 isg-credential-services
-exec 2>&1
-cd /data/data/com.termux/files/usr/var/service/isg-credential-services || exit 1
 exec proot-distro login ubuntu -- bash -c '
-    cd /root/isg-credential-services || exit 1
-    export NODE_ENV=production
-    export HOME=/root
-    exec npm start 2>&1
+    cd /root/isg-credential-services
+    node --expose-gc start-termux.js
 '
 EOF
 
