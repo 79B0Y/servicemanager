@@ -31,18 +31,15 @@ RUN_FILE="$SERVICE_CONTROL_DIR/run"
 DOWN_FILE="$SERVICE_CONTROL_DIR/down"
 
 # 容器内路径
-CREDENTIAL_INSTALL_DIR="/root/isg-credential-services"
-CREDENTIAL_CONFIG_FILE="$CREDENTIAL_INSTALL_DIR/config.json"
+ISG_INSTALL_DIR="/root/isg-credential-services"
+ISG_PACKAGE_URL="https://eucfg.linklinkiot.com/isg/credential-services.zip"
 
-# isg-credential-services 特定配置
-CREDENTIAL_PORT="3000"
-CREDENTIAL_LISTEN_IP="0.0.0.0"
+# 服务特定配置
+ISG_PORT="3000"
 
 # 脚本参数
 MAX_WAIT="${MAX_WAIT:-300}"
 INTERVAL="${INTERVAL:-5}"
-GIT_CLONE_RETRIES="${GIT_CLONE_RETRIES:-3}"  # git clone 重试次数
-GIT_CLONE_TIMEOUT="${GIT_CLONE_TIMEOUT:-60}"  # git clone 超时时间(秒)
 
 # =============================================================================
 # 工具函数
@@ -80,14 +77,14 @@ mqtt_report() {
 }
 
 get_current_version() {
-    proot-distro login "$PROOT_DISTRO" -- bash -c '
-        if [ -d "'"$CREDENTIAL_INSTALL_DIR"'" ]; then
-            cd "'"$CREDENTIAL_INSTALL_DIR"'"
-            bash manage-service.sh version
+    proot-distro login "$PROOT_DISTRO" -- bash -c "
+        if [ -d '$ISG_INSTALL_DIR' ] && [ -f '$ISG_INSTALL_DIR/manage-service.sh' ]; then
+            cd '$ISG_INSTALL_DIR'
+            bash manage-service.sh version 2>/dev/null | grep -oP '(?<=版本号: )[0-9.]+' || echo 'unknown'
         else
-            echo "unknown"
+            echo 'unknown'
         fi
-    ' 2>/dev/null || echo "unknown"
+    " 2>/dev/null || echo "unknown"
 }
 
 record_install_history() {
@@ -95,38 +92,6 @@ record_install_history() {
     local version="$2"
     local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     echo "$timestamp INSTALL $status $version" >> "$INSTALL_HISTORY_FILE"
-}
-
-# Git clone 重试函数
-git_clone_with_retry() {
-    local repo_url="$1"
-    local target_dir="$2"
-    local max_retries="$GIT_CLONE_RETRIES"
-    local retry_count=0
-    
-    while [ $retry_count -lt $max_retries ]; do
-        retry_count=$((retry_count + 1))
-        log "attempting git clone (attempt $retry_count/$max_retries)"
-        
-        if timeout "$GIT_CLONE_TIMEOUT" git clone "$repo_url" "$target_dir" 2>&1 | tee -a "$LOG_FILE"; then
-            log "git clone succeeded on attempt $retry_count"
-            return 0
-        else
-            log "git clone failed on attempt $retry_count"
-            
-            if [ $retry_count -lt $max_retries ]; then
-                local wait_time=$((retry_count * 5))  # 递增等待时间: 5s, 10s, 15s
-                log "waiting ${wait_time}s before retry..."
-                sleep "$wait_time"
-                
-                # 清理失败的目录
-                rm -rf "$target_dir" 2>/dev/null || true
-            fi
-        fi
-    done
-    
-    log "git clone failed after $max_retries attempts"
-    return 1
 }
 
 # =============================================================================
@@ -139,6 +104,34 @@ log "starting isg-credential-services installation process"
 mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"starting installation process\",\"timestamp\":$(date +%s)}"
 
 # -----------------------------------------------------------------------------
+# 读取服务依赖配置
+# -----------------------------------------------------------------------------
+log "reading service dependencies from serviceupdate.json"
+mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"reading service dependencies from serviceupdate.json\",\"timestamp\":$(date +%s)}"
+
+if [ ! -f "$SERVICEUPDATE_FILE" ]; then
+    log "serviceupdate.json not found, using default dependencies"
+    DEPENDENCIES='["python3-numpy","python3-sklearn","python3-requests","wget","unzip"]'
+else
+    DEPENDENCIES=$(jq -c ".services[] | select(.id==\"$SERVICE_ID\") | .install_dependencies // [\"python3-numpy\",\"python3-sklearn\",\"python3-requests\",\"wget\",\"unzip\"]" "$SERVICEUPDATE_FILE" 2>/dev/null || echo '["python3-numpy","python3-sklearn","python3-requests","wget","unzip"]')
+fi
+
+# 转换为 bash 数组
+if [ "$DEPENDENCIES" != "null" ] && [ -n "$DEPENDENCIES" ]; then
+    readarray -t DEPS_ARRAY < <(echo "$DEPENDENCIES" | jq -r '.[]' 2>/dev/null)
+else
+    DEPS_ARRAY=("python3-numpy" "python3-sklearn" "python3-requests" "wget" "unzip")
+fi
+
+# 确保数组不为空
+if [ ${#DEPS_ARRAY[@]} -eq 0 ]; then
+    DEPS_ARRAY=("python3-numpy" "python3-sklearn" "python3-requests" "wget" "unzip")
+fi
+
+log "installing required dependencies: ${DEPS_ARRAY[*]}"
+mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"installing required dependencies\",\"dependencies\":$DEPENDENCIES,\"timestamp\":$(date +%s)}"
+
+# -----------------------------------------------------------------------------
 # 安装系统依赖
 # -----------------------------------------------------------------------------
 log "installing system dependencies in proot container"
@@ -146,72 +139,29 @@ mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"messa
 
 if ! proot-distro login "$PROOT_DISTRO" -- bash -c "
     apt-get update
-    # nodejs from nodesource already includes npm, so we don't need to install npm separately
-    apt-get install -y git curl nodejs
-    
-    # Verify npm is available
-    if ! command -v npm &> /dev/null; then
-        echo 'Error: npm not found after nodejs installation'
-        exit 1
-    fi
-    
-    echo \"Node.js version: \$(node --version)\"
-    echo \"npm version: \$(npm --version)\"
+    apt-get install -y ${DEPS_ARRAY[*]}
 "; then
     log "failed to install system dependencies"
-    mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"dependency installation failed\",\"timestamp\":$(date +%s)}"
+    mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"dependency installation failed\",\"dependencies\":$DEPENDENCIES,\"timestamp\":$(date +%s)}"
     record_install_history "FAILED" "unknown"
     exit 1
 fi
 
 # -----------------------------------------------------------------------------
-# 克隆和安装 isg-credential-services (带重试机制)
+# 下载并安装 isg-credential-services
 # -----------------------------------------------------------------------------
-log "cloning and installing isg-credential-services"
-mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"cloning and installing isg-credential-services\",\"timestamp\":$(date +%s)}"
+log "downloading and installing isg-credential-services"
+mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"downloading and installing isg-credential-services\",\"timestamp\":$(date +%s)}"
 
 if ! proot-distro login "$PROOT_DISTRO" -- bash -c "
     cd /root
+    apt update
+    apt install -y python3-numpy python3-sklearn python3-requests
     rm -rf isg-credential-services
-    
-    # 定义 git clone 重试函数 (在容器内)
-    git_clone_with_retry() {
-        local repo_url=\$1
-        local target_dir=\$2
-        local max_retries=$GIT_CLONE_RETRIES
-        local timeout=$GIT_CLONE_TIMEOUT
-        local retry_count=0
-        
-        while [ \$retry_count -lt \$max_retries ]; do
-            retry_count=\$((retry_count + 1))
-            echo \"[$(date '+%F %T')] attempting git clone (attempt \$retry_count/\$max_retries)\"
-            
-            if timeout \$timeout git clone \$repo_url \$target_dir; then
-                echo \"[$(date '+%F %T')] git clone succeeded on attempt \$retry_count\"
-                return 0
-            else
-                echo \"[$(date '+%F %T')] git clone failed on attempt \$retry_count\"
-                
-                if [ \$retry_count -lt \$max_retries ]; then
-                    local wait_time=\$((retry_count * 5))
-                    echo \"[$(date '+%F %T')] waiting \${wait_time}s before retry...\"
-                    sleep \$wait_time
-                    rm -rf \$target_dir 2>/dev/null || true
-                fi
-            fi
-        done
-        
-        echo \"[$(date '+%F %T')] git clone failed after \$max_retries attempts\"
-        return 1
-    }
-    
-    # 执行 git clone (带重试)
-    if ! git_clone_with_retry 'https://github.com/79B0Y/isg-credential-services.git' 'isg-credential-services'; then
-        echo 'fatal: git clone failed after all retries'
-        exit 1
-    fi
-    
-    # 安装 npm 依赖
+    wget --no-check-certificate $ISG_PACKAGE_URL
+    unzip credential-services.zip
+    rm credential-services.zip
+    mv credential-services isg-credential-services
     cd isg-credential-services
     npm install
 "; then
@@ -224,41 +174,6 @@ fi
 # 获取安装的版本
 VERSION_STR=$(get_current_version)
 log "isg-credential-services version: $VERSION_STR"
-
-# -----------------------------------------------------------------------------
-# 生成初始配置文件
-# -----------------------------------------------------------------------------
-log "generating initial configuration"
-mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"generating initial configuration\",\"timestamp\":$(date +%s)}"
-
-# 获取 MQTT 配置
-load_mqtt_conf
-
-proot-distro login "$PROOT_DISTRO" -- bash -c "
-    cd '$CREDENTIAL_INSTALL_DIR'
-    
-    # 创建基础配置文件（如果不存在）
-    if [ ! -f config.json ]; then
-        cat > config.json << 'EOCONFIG'
-{
-  \"port\": $CREDENTIAL_PORT,
-  \"host\": \"$CREDENTIAL_LISTEN_IP\",
-  \"mqtt\": {
-    \"broker\": \"mqtt://$MQTT_HOST:$MQTT_PORT\",
-    \"username\": \"$MQTT_USER\",
-    \"password\": \"$MQTT_PASS\"
-  },
-  \"logging\": {
-    \"level\": \"info\",
-    \"file\": \"./logs/service.log\"
-  }
-}
-EOCONFIG
-    fi
-    
-    # 创建日志目录
-    mkdir -p logs
-"
 
 # -----------------------------------------------------------------------------
 # 注册 servicemonitor 服务看护
