@@ -2,7 +2,7 @@
 # =============================================================================
 # isg-credential-services 卸载脚本
 # 版本: v1.0.0
-# 功能: 完全卸载 isg-credential-services 环境及配置
+# 功能: 完全卸载 isg-credential-services 环境和配置
 # =============================================================================
 
 set -euo pipefail
@@ -25,8 +25,8 @@ INSTALL_HISTORY_FILE="$BACKUP_DIR/.install_history"
 DISABLED_FLAG="$SERVICE_DIR/.disabled"
 
 PROOT_DISTRO="${PROOT_DISTRO:-ubuntu}"
-CREDENTIAL_INSTALL_DIR="/root/isg-credential-services"
-CREDENTIAL_PORT="3000"
+ISG_INSTALL_DIR="/root/isg-credential-services"
+ISG_PORT="3000"
 
 # -----------------------------------------------------------------------------
 # 辅助函数
@@ -55,11 +55,11 @@ load_mqtt_conf() {
     fi
 }
 
-get_credential_pid() {
-    local port_pid=$(netstat -tnlp 2>/dev/null | grep ":$CREDENTIAL_PORT " | awk '{print $7}' | cut -d'/' -f1 | head -n1)
+get_isg_pid() {
+    local port_pid=$(netstat -tnlp 2>/dev/null | grep ":$ISG_PORT " | awk '{print $7}' | cut -d'/' -f1 | head -n1)
     
     if [ -n "$port_pid" ] && [ "$port_pid" != "-" ]; then
-        local cmdline=$(cat /proc/$port_pid/cmdline 2>/dev/null | grep -o 'credential\|node.*start-termux' || true)
+        local cmdline=$(cat /proc/$port_pid/cmdline 2>/dev/null | grep -o 'node\|npm\|credential' || true)
         if [ -n "$cmdline" ]; then
             echo "$port_pid"
             return 0
@@ -116,15 +116,15 @@ else
     fi
     
     # 直接杀死进程
-    CREDENTIAL_PID=$(get_credential_pid || echo "")
-    if [ -n "$CREDENTIAL_PID" ]; then
-        log "杀死 isg-credential-services 进程 $CREDENTIAL_PID"
-        kill "$CREDENTIAL_PID" 2>/dev/null || true
+    ISG_PID=$(get_isg_pid || echo "")
+    if [ -n "$ISG_PID" ]; then
+        log "杀死 isg-credential-services 进程 $ISG_PID"
+        kill "$ISG_PID" 2>/dev/null || true
         sleep 2
         
         # 如果还在运行，强制杀死
-        if get_credential_pid > /dev/null 2>&1; then
-            kill -9 "$CREDENTIAL_PID" 2>/dev/null || true
+        if get_isg_pid > /dev/null 2>&1; then
+            kill -9 "$ISG_PID" 2>/dev/null || true
         fi
     fi
 fi
@@ -132,11 +132,11 @@ fi
 sleep 5
 
 # 确认服务已停止
-if get_credential_pid > /dev/null 2>&1; then
+if get_isg_pid > /dev/null 2>&1; then
     log "警告: isg-credential-services 进程仍在运行，尝试强制停止"
-    CREDENTIAL_PID=$(get_credential_pid || echo "")
-    if [ -n "$CREDENTIAL_PID" ]; then
-        kill -9 "$CREDENTIAL_PID" 2>/dev/null || true
+    ISG_PID=$(get_isg_pid || echo "")
+    if [ -n "$ISG_PID" ]; then
+        kill -9 "$ISG_PID" 2>/dev/null || true
     fi
 fi
 
@@ -153,12 +153,12 @@ log_step() {
 
 log_step "杀死可能运行的 isg-credential-services 进程"
 # 通过3000端口找到isg-credential-services进程
-CREDENTIAL_PORT_PID=$(netstat -tnlp 2>/dev/null | grep ':3000 ' | awk '{print $7}' | cut -d'/' -f1 | head -n1)
-if [ -n "$CREDENTIAL_PORT_PID" ] && [ "$CREDENTIAL_PORT_PID" != "-" ]; then
+ISG_PORT_PID=$(netstat -tnlp 2>/dev/null | grep ':3000 ' | awk '{print $7}' | cut -d'/' -f1 | head -n1)
+if [ -n "$ISG_PORT_PID" ] && [ "$ISG_PORT_PID" != "-" ]; then
     # 检查进程命令行确认是isg-credential-services
-    CREDENTIAL_CMD=$(cat /proc/$CREDENTIAL_PORT_PID/cmdline 2>/dev/null | grep -o 'credential\|node.*start-termux' || true)
-    if [ -n "$CREDENTIAL_CMD" ]; then
-        kill "$CREDENTIAL_PORT_PID" && echo "[INFO] 杀死 isg-credential-services 进程 $CREDENTIAL_PORT_PID" || echo "[INFO] 杀死进程失败"
+    ISG_CMD=$(cat /proc/$ISG_PORT_PID/cmdline 2>/dev/null | grep -o 'node\|npm\|credential' || true)
+    if [ -n "$ISG_CMD" ]; then
+        kill "$ISG_PORT_PID" && echo "[INFO] 杀死 isg-credential-services 进程 $ISG_PORT_PID" || echo "[INFO] 杀死进程失败"
     else
         echo "[INFO] 端口 3000 上的进程不是 isg-credential-services"
     fi
@@ -198,7 +198,7 @@ record_uninstall_history "SUCCESS"
 log "验证卸载状态"
 
 # 检查安装目录是否还存在
-if proot-distro login "$PROOT_DISTRO" -- test -d "$CREDENTIAL_INSTALL_DIR" 2>/dev/null; then
+if proot-distro login "$PROOT_DISTRO" -- test -d "$ISG_INSTALL_DIR" 2>/dev/null; then
     log "警告: isg-credential-services 安装目录仍然存在"
     UNINSTALL_STATUS="partial"
 else
@@ -207,7 +207,7 @@ else
 fi
 
 # 检查进程是否还在运行
-if get_credential_pid > /dev/null 2>&1; then
+if get_isg_pid > /dev/null 2>&1; then
     log "警告: isg-credential-services 进程仍在运行"
     UNINSTALL_STATUS="partial"
 else
@@ -215,11 +215,11 @@ else
 fi
 
 # 检查端口是否还在监听
-if netstat -tulnp 2>/dev/null | grep ":$CREDENTIAL_PORT " > /dev/null; then
-    log "警告: 端口 $CREDENTIAL_PORT 仍被占用"
+if netstat -tulnp 2>/dev/null | grep ":$ISG_PORT " > /dev/null; then
+    log "警告: 端口 $ISG_PORT 仍被占用"
     UNINSTALL_STATUS="partial"
 else
-    log "✅ 端口 $CREDENTIAL_PORT 已释放"
+    log "✅ 端口 $ISG_PORT 已释放"
 fi
 
 # -----------------------------------------------------------------------------
@@ -235,9 +235,9 @@ fi
 
 log "卸载摘要:"
 log "  - 状态: $UNINSTALL_STATUS"
-log "  - 安装目录: $(proot-distro login "$PROOT_DISTRO" -- test -d "$CREDENTIAL_INSTALL_DIR" && echo "未完成" || echo "已完成")"
-log "  - 进程停止: $(get_credential_pid >/dev/null 2>&1 && echo "未完成" || echo "已完成")"
-log "  - 端口释放: $(netstat -tulnp 2>/dev/null | grep ":$CREDENTIAL_PORT " >/dev/null && echo "未完成" || echo "已完成")"
+log "  - 安装目录: $(proot-distro login "$PROOT_DISTRO" -- test -d "$ISG_INSTALL_DIR" && echo "未完成" || echo "已完成")"
+log "  - 进程停止: $(get_isg_pid >/dev/null 2>&1 && echo "未完成" || echo "已完成")"
+log "  - 端口释放: $(netstat -tulnp 2>/dev/null | grep ":$ISG_PORT " >/dev/null && echo "未完成" || echo "已完成")"
 log "  - 服务监控: 已清理"
 
 exit 0
