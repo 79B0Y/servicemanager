@@ -142,19 +142,13 @@ mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\
 
 TRIES=0
 while (( TRIES < MAX_TRIES )); do
-    if get_isg_pid > /dev/null 2>&1; then
-        # 额外等待一下确保端口接口就绪
-        sleep 3
-        
-        # 验证端口接口
-        if timeout 10 nc -z 127.0.0.1 "$ISG_PORT" 2>/dev/null; then
-            log "isg-credential-services 服务启动成功"
-            mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"success\",\"message\":\"service started successfully\",\"timestamp\":$(date +%s)}"
-            exit 0
-        else
-            log "isg-credential-services 进程启动但端口接口未就绪，继续等待..."
-        fi
+    # 简单检查：只要3000端口监听就认为服务启动成功
+    if netstat -tnlp 2>/dev/null | grep -q ":$ISG_PORT "; then
+        log "isg-credential-services 服务启动成功（端口 $ISG_PORT 已监听）"
+        mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"success\",\"message\":\"service started successfully\",\"timestamp\":$(date +%s)}"
+        exit 0
     fi
+    
     sleep 5
     TRIES=$((TRIES+1))
 done
