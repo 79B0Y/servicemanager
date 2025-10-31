@@ -78,9 +78,14 @@ mqtt_report() {
 
 get_current_version() {
     proot-distro login "$PROOT_DISTRO" -- bash -c "
-        if [ -d '$ISG_INSTALL_DIR' ] && [ -f '$ISG_INSTALL_DIR/manage-service.sh' ]; then
-            cd '$ISG_INSTALL_DIR'
-            bash manage-service.sh version 2>/dev/null | grep -oP '(?<=版本号: )[0-9.]+' || echo 'unknown'
+        if [ -f '$ISG_INSTALL_DIR/package.json' ]; then
+            # 优先使用 jq
+            if command -v jq &> /dev/null; then
+                jq -r '.version // \"unknown\"' '$ISG_INSTALL_DIR/package.json' 2>/dev/null || echo 'unknown'
+            else
+                # 降级使用 grep
+                grep -oP '\"version\":\s*\"\K[^\"]+' '$ISG_INSTALL_DIR/package.json' 2>/dev/null || echo 'unknown'
+            fi
         else
             echo 'unknown'
         fi
