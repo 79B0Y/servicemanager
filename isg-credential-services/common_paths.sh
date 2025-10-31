@@ -59,16 +59,15 @@ PROOT_ROOTFS="/data/data/com.termux/files/usr/var/lib/proot-distro/installed-roo
 # =============================================================================
 # isg-credential-services 安装路径 (容器内)
 # =============================================================================
-CREDENTIAL_INSTALL_DIR="/root/isg-credential-services"
-CREDENTIAL_CONFIG_FILE="$CREDENTIAL_INSTALL_DIR/config.json"
-CREDENTIAL_AGENT_FILE="$CREDENTIAL_INSTALL_DIR/agent.json"
-CREDENTIAL_LOG_FILE="$CREDENTIAL_INSTALL_DIR/logs/service.log"
+ISG_INSTALL_DIR="/root/isg-credential-services"
+ISG_PACKAGE_URL="https://eucfg.linklinkiot.com/isg/credential-services.zip"
+ISG_PACKAGE_NAME="credential-services.zip"
 
 # =============================================================================
 # 网络和端口配置
 # =============================================================================
-CREDENTIAL_PORT="3000"  # isg-credential-services 默认端口
-CREDENTIAL_LISTEN_IP="0.0.0.0"
+ISG_PORT="3000"
+ISG_LISTEN_IP="0.0.0.0"
 
 # =============================================================================
 # 脚本运行参数
@@ -90,12 +89,12 @@ TEMP_RESTORE_DIR="$TERMUX_TMP_DIR/${SERVICE_ID}_restore_$$"
 # 系统依赖包列表
 # =============================================================================
 SYSTEM_DEPENDENCIES=(
-    "nodejs"
-    "npm"
-    "git"
-    "curl"
+    "python3-numpy"
+    "python3-sklearn"
+    "python3-requests"
     "wget"
     "unzip"
+    "curl"
 )
 
 # =============================================================================
@@ -138,21 +137,86 @@ get_formatted_time() {
 }
 
 # =============================================================================
+# 函数：版本比较
+# =============================================================================
+# 版本比较函数：比较两个语义化版本号
+# 参数：$1=当前版本, $2=目标版本
+# 返回值：0=相等，1=第一个版本较新，2=第二个版本较新，3=无法比较
+compare_versions() {
+    local current="$1"
+    local target="$2"
+    
+    # 处理 unknown 版本
+    if [[ "$current" == "unknown" || "$target" == "unknown" ]]; then
+        echo 3
+        return
+    fi
+    
+    # 处理相同版本
+    if [[ "$current" == "$target" ]]; then
+        echo 0
+        return
+    fi
+    
+    # 提取版本号数字（去除非数字字符）
+    local current_clean=$(echo "$current" | sed 's/[^0-9.]//g')
+    local target_clean=$(echo "$target" | sed 's/[^0-9.]//g')
+    
+    # 如果清理后为空，无法比较
+    if [[ -z "$current_clean" || -z "$target_clean" ]]; then
+        echo 3
+        return
+    fi
+    
+    # 使用 sort -V 进行版本比较
+    local sorted=$(printf '%s\n%s\n' "$current_clean" "$target_clean" | sort -V)
+    local first_line=$(echo "$sorted" | head -n1)
+    
+    if [[ "$first_line" == "$current_clean" ]]; then
+        if [[ "$current_clean" == "$target_clean" ]]; then
+            echo 0  # 相等
+        else
+            echo 2  # target 版本较新
+        fi
+    else
+        echo 1  # current 版本较新
+    fi
+}
+
+# =============================================================================
+# 函数：标准版本获取
+# =============================================================================
+# 使用 manage-service.sh version 获取版本信息
+get_isg_version() {
+    local proot_distro="${PROOT_DISTRO:-ubuntu}"
+    local install_dir="${ISG_INSTALL_DIR:-/root/isg-credential-services}"
+    
+    proot-distro login "$proot_distro" -- bash -c "
+        if [ -d '$install_dir' ] && [ -f '$install_dir/manage-service.sh' ]; then
+            cd '$install_dir'
+            bash manage-service.sh version 2>/dev/null | grep -oP '(?<=版本号: )[0-9.]+' || echo 'unknown'
+        else
+            echo 'unknown'
+        fi
+    " 2>/dev/null || echo "unknown"
+}
+
+# =============================================================================
 # 版本信息
 # =============================================================================
 SCRIPT_VERSION="1.0.0"
-SCRIPT_DATE="2025-09-17"
+SCRIPT_DATE="2025-10-31"
 
 # =============================================================================
 # 调试信息 (当被直接执行时)
 # =============================================================================
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     echo "isg-credential-services 统一路径配置"
-    echo "==================================="
+    echo "======================================"
     echo "SERVICE_ID: $SERVICE_ID"
     echo "BASE_DIR: $BASE_DIR"
-    echo "CREDENTIAL_PORT: $CREDENTIAL_PORT"
-    echo "CREDENTIAL_INSTALL_DIR: $CREDENTIAL_INSTALL_DIR"
+    echo "ISG_PORT: $ISG_PORT"
+    echo "ISG_INSTALL_DIR: $ISG_INSTALL_DIR"
     echo "BACKUP_DIR: $BACKUP_DIR"
     echo "TEMP_DIR: $TEMP_DIR"
     echo ""
