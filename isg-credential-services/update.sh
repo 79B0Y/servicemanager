@@ -1,10 +1,9 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
-# isg-credential-services 升级脚本 - 完整修复版本
+# isg-credential-services 升级脚本
 # 版本: v1.0.0
 # 功能: 
-# - 统一使用基础要求里的版本获取方法
-# - 新增版本比较逻辑，避免不必要的降级
+# - 升级前进行版本比较，避免不必要的降级
 # - 升级前自动备份
 # - 日志中文/MQTT全英文
 # =============================================================================
@@ -22,8 +21,9 @@ BACKUP_DIR="/sdcard/isgbackup/$SERVICE_ID"
 LOG_DIR="$SERVICE_DIR/logs"
 LOG_FILE="$LOG_DIR/update.log"
 PROOT_DISTRO="${PROOT_DISTRO:-ubuntu}"
-CREDENTIAL_INSTALL_DIR="/root/isg-credential-services"
-CREDENTIAL_PORT="3000"
+ISG_INSTALL_DIR="/root/isg-credential-services"
+ISG_PACKAGE_URL="https://eucfg.linklinkiot.com/isg/credential-services.zip"
+ISG_PORT="3000"
 MAX_WAIT=300
 INTERVAL=5
 
@@ -64,16 +64,15 @@ mqtt_report() {
     echo "[$(date '+%F %T')] [MQTT] $topic -> $payload" >> "$LOG_FILE"
 }
 
-# 修复: 使用基础要求里的标准版本获取方法
 get_current_version() {
-    proot-distro login "$PROOT_DISTRO" -- bash -c '
-        if [ -d "'"$CREDENTIAL_INSTALL_DIR"'" ]; then
-            cd "'"$CREDENTIAL_INSTALL_DIR"'"
-            bash manage-service.sh version
+    proot-distro login "$PROOT_DISTRO" -- bash -c "
+        if [ -d '$ISG_INSTALL_DIR' ] && [ -f '$ISG_INSTALL_DIR/manage-service.sh' ]; then
+            cd '$ISG_INSTALL_DIR'
+            bash manage-service.sh version 2>/dev/null | grep -oP '(?<=版本号: )[0-9.]+' || echo 'unknown'
         else
-            echo "unknown"
+            echo 'unknown'
         fi
-    ' 2>/dev/null || echo "unknown"
+    " 2>/dev/null || echo "unknown"
 }
 
 get_latest_version() {
@@ -163,13 +162,9 @@ else
     TARGET_VERSION="unknown"
 fi
 
-# 获取 GitHub 最新版
+# 如果无法从配置获取目标版本，使用"latest"
 if [ "$TARGET_VERSION" = "unknown" ]; then
-    TARGET_VERSION=$(proot-distro login "$PROOT_DISTRO" -- bash -c "
-        cd '$CREDENTIAL_INSTALL_DIR'
-        git fetch origin
-        git describe --tags --abbrev=0 HEAD 2>/dev/null || echo 'latest'
-    " 2>/dev/null || echo "latest")
+    TARGET_VERSION="latest"
     log "目标版本自动检测为: $TARGET_VERSION"
 else
     log "目标版本: $TARGET_VERSION"
@@ -179,36 +174,41 @@ fi
 log "检查版本比较: 当前版本 $CURRENT_VERSION vs 目标版本 $TARGET_VERSION"
 mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"updating\",\"current_version\":\"$CURRENT_VERSION\",\"target_version\":\"$TARGET_VERSION\",\"message\":\"comparing versions\",\"timestamp\":$(date +%s)}"
 
-VERSION_COMPARE=$(compare_versions "$CURRENT_VERSION" "$TARGET_VERSION")
+# 如果目标版本不是 "latest"，则进行版本比较
+if [ "$TARGET_VERSION" != "latest" ]; then
+    VERSION_COMPARE=$(compare_versions "$CURRENT_VERSION" "$TARGET_VERSION")
 
-case $VERSION_COMPARE in
-    0)
-        log "当前版本与目标版本相同，无需升级"
-        END_TIME=$(date +%s)
-        DURATION=$((END_TIME - START_TIME))
-        record_update_history "SKIPPED" "$CURRENT_VERSION" "$TARGET_VERSION" "versions are identical"
-        mqtt_report "isg/update/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"skipped\",\"current_version\":\"$CURRENT_VERSION\",\"target_version\":\"$TARGET_VERSION\",\"reason\":\"versions are identical\",\"duration\":$DURATION,\"timestamp\":$END_TIME}"
-        log "✅ 升级跳过: 版本相同"
-        exit 0
-        ;;
-    1)
-        log "当前版本 ($CURRENT_VERSION) 比目标版本 ($TARGET_VERSION) 更新，跳过升级"
-        END_TIME=$(date +%s)
-        DURATION=$((END_TIME - START_TIME))
-        record_update_history "SKIPPED" "$CURRENT_VERSION" "$TARGET_VERSION" "current version is newer"
-        mqtt_report "isg/update/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"skipped\",\"current_version\":\"$CURRENT_VERSION\",\"target_version\":\"$TARGET_VERSION\",\"reason\":\"current version is newer\",\"duration\":$DURATION,\"timestamp\":$END_TIME}"
-        log "✅ 升级跳过: 当前版本更新"
-        exit 0
-        ;;
-    2)
-        log "目标版本 ($TARGET_VERSION) 比当前版本 ($CURRENT_VERSION) 更新，继续升级"
-        mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"updating\",\"current_version\":\"$CURRENT_VERSION\",\"target_version\":\"$TARGET_VERSION\",\"message\":\"target version is newer, proceeding with upgrade\",\"timestamp\":$(date +%s)}"
-        ;;
-    3)
-        log "无法比较版本 ($CURRENT_VERSION vs $TARGET_VERSION)，强制升级"
-        mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"updating\",\"current_version\":\"$CURRENT_VERSION\",\"target_version\":\"$TARGET_VERSION\",\"message\":\"cannot compare versions, forcing upgrade\",\"timestamp\":$(date +%s)}"
-        ;;
-esac
+    case $VERSION_COMPARE in
+        0)
+            log "当前版本与目标版本相同，无需升级"
+            END_TIME=$(date +%s)
+            DURATION=$((END_TIME - START_TIME))
+            record_update_history "SKIPPED" "$CURRENT_VERSION" "$TARGET_VERSION" "versions are identical"
+            mqtt_report "isg/update/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"skipped\",\"current_version\":\"$CURRENT_VERSION\",\"target_version\":\"$TARGET_VERSION\",\"reason\":\"versions are identical\",\"duration\":$DURATION,\"timestamp\":$END_TIME}"
+            log "✅ 升级跳过: 版本相同"
+            exit 0
+            ;;
+        1)
+            log "当前版本 ($CURRENT_VERSION) 比目标版本 ($TARGET_VERSION) 更新，跳过升级"
+            END_TIME=$(date +%s)
+            DURATION=$((END_TIME - START_TIME))
+            record_update_history "SKIPPED" "$CURRENT_VERSION" "$TARGET_VERSION" "current version is newer"
+            mqtt_report "isg/update/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"skipped\",\"current_version\":\"$CURRENT_VERSION\",\"target_version\":\"$TARGET_VERSION\",\"reason\":\"current version is newer\",\"duration\":$DURATION,\"timestamp\":$END_TIME}"
+            log "✅ 升级跳过: 当前版本更新"
+            exit 0
+            ;;
+        2)
+            log "目标版本 ($TARGET_VERSION) 比当前版本 ($CURRENT_VERSION) 更新，继续升级"
+            mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"updating\",\"current_version\":\"$CURRENT_VERSION\",\"target_version\":\"$TARGET_VERSION\",\"message\":\"target version is newer, proceeding with upgrade\",\"timestamp\":$(date +%s)}"
+            ;;
+        3)
+            log "无法比较版本 ($CURRENT_VERSION vs $TARGET_VERSION)，强制升级"
+            mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"updating\",\"current_version\":\"$CURRENT_VERSION\",\"target_version\":\"$TARGET_VERSION\",\"message\":\"cannot compare versions, forcing upgrade\",\"timestamp\":$(date +%s)}"
+            ;;
+    esac
+else
+    log "目标版本为 latest，强制升级"
+fi
 
 # 升级依赖
 DEPS_ARRAY=()
@@ -223,7 +223,7 @@ if [ ${#DEPS_ARRAY[@]} -gt 0 ]; then
     mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"updating\",\"current_version\":\"$CURRENT_VERSION\",\"message\":\"installing upgrade dependencies\",\"dependencies\":$UPGRADE_DEPS,\"timestamp\":$(date +%s)}"
     for dep in "${DEPS_ARRAY[@]}"; do
         log "安装依赖: $dep"
-        if ! proot-distro login "$PROOT_DISTRO" -- bash -c "apt-get update && apt-get install -y '$dep'"; then
+        if ! proot-distro login "$PROOT_DISTRO" -- bash -c "apt-get install -y '$dep'"; then
             log "依赖 $dep 安装失败"
             mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"upgrade dependencies installation failed\",\"dependencies\":$UPGRADE_DEPS,\"current_version\":\"$CURRENT_VERSION\",\"timestamp\":$(date +%s)}"
             record_update_history "FAILED" "$CURRENT_VERSION" "unknown" "upgrade dependencies installation failed"
@@ -240,19 +240,24 @@ mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"updating\",\"current_
 bash "$SERVICE_DIR/stop.sh"
 sleep 5
 
-# ------------------- 升级核心包 -------------------
-log "升级 isg-credential-services 到版本 $TARGET_VERSION"
-mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"updating\",\"current_version\":\"$CURRENT_VERSION\",\"message\":\"updating isg-credential-services package\",\"target_version\":\"$TARGET_VERSION\",\"timestamp\":$(date +%s)}"
+# ------------------- 升级服务（与安装命令相同）-------------------
+log "升级 isg-credential-services"
+mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"updating\",\"current_version\":\"$CURRENT_VERSION\",\"message\":\"updating isg-credential-services\",\"timestamp\":$(date +%s)}"
 
 if ! proot-distro login "$PROOT_DISTRO" -- bash -c "
     cd /root
+    apt update
+    apt install -y python3-numpy python3-sklearn python3-requests
     rm -rf isg-credential-services
-    git clone https://github.com/79B0Y/isg-credential-services.git
+    wget --no-check-certificate $ISG_PACKAGE_URL
+    unzip credential-services.zip
+    rm credential-services.zip
+    mv credential-services isg-credential-services
     cd isg-credential-services
     npm install
 "; then
     log "isg-credential-services 升级失败"
-    mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"isg-credential-services package update failed\",\"current_version\":\"$CURRENT_VERSION\",\"timestamp\":$(date +%s)}"
+    mqtt_report "isg/update/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"isg-credential-services update failed\",\"current_version\":\"$CURRENT_VERSION\",\"timestamp\":$(date +%s)}"
     record_update_history "FAILED" "$CURRENT_VERSION" "unknown" "package update failed"
     exit 1
 fi
