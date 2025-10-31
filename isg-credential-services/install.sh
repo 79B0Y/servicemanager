@@ -171,6 +171,38 @@ if ! proot-distro login "$PROOT_DISTRO" -- bash -c "
     exit 1
 fi
 
+# -----------------------------------------------------------------------------
+# 修改 bestMatch 配置文件
+# -----------------------------------------------------------------------------
+log "configuring bestMatch module"
+mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"configuring bestMatch module\",\"timestamp\":$(date +%s)}"
+
+CONFIG_FILE_PATH="/root/isg-credential-services/modules/bestMatch/config.json"
+
+if ! proot-distro login "$PROOT_DISTRO" -- bash -c "
+    if [ -f '$CONFIG_FILE_PATH' ]; then
+        # 备份原配置文件
+        cp '$CONFIG_FILE_PATH' '${CONFIG_FILE_PATH}.backup'
+        
+        # 使用 jq 修改 pythonPath
+        if command -v jq &> /dev/null; then
+            jq '.pythonPath = \"/usr/bin/python3.12\"' '$CONFIG_FILE_PATH' > '${CONFIG_FILE_PATH}.tmp'
+            mv '${CONFIG_FILE_PATH}.tmp' '$CONFIG_FILE_PATH'
+        else
+            # 如果没有 jq，使用 sed 替换
+            sed -i 's|\"pythonPath\": \"python3\"|\"pythonPath\": \"/usr/bin/python3.12\"|g' '$CONFIG_FILE_PATH'
+        fi
+        
+        echo 'bestMatch config.json updated successfully'
+    else
+        echo 'Warning: bestMatch config.json not found at $CONFIG_FILE_PATH'
+    fi
+"; then
+    log "warning: failed to update bestMatch config, but continuing installation"
+else
+    log "bestMatch configuration updated successfully"
+fi
+
 # 获取安装的版本
 VERSION_STR=$(get_current_version)
 log "isg-credential-services version: $VERSION_STR"
@@ -188,9 +220,13 @@ mkdir -p "$SERVICE_CONTROL_DIR"
 cat << 'EOF' > "$RUN_FILE"
 #!/data/data/com.termux/files/usr/bin/sh
 # 启动 isg-credential-services
+exec 2>&1
+cd /data/data/com.termux/files/usr/var/service/isg-credential-services || exit 1
 exec proot-distro login ubuntu -- bash -c '
-    cd /root/isg-credential-services
-    npm start
+    cd /root/isg-credential-services || exit 1
+    export NODE_ENV=production
+    export HOME=/root
+    exec npm start 2>&1
 '
 EOF
 
