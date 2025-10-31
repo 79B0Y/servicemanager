@@ -24,7 +24,7 @@ LOG_DIR="$SERVICE_DIR/logs"
 LOG_FILE="$LOG_DIR/start.log"
 DISABLED_FLAG="$SERVICE_DIR/.disabled"
 
-CREDENTIAL_PORT="3000"
+ISG_PORT="3000"
 MAX_TRIES=30
 
 # -----------------------------------------------------------------------------
@@ -52,14 +52,14 @@ load_mqtt_conf() {
     fi
 }
 
-get_credential_pid() {
-    local port_pid=$(netstat -tnlp 2>/dev/null | grep ":$CREDENTIAL_PORT " | awk '{print $7}' | cut -d'/' -f1 | head -n1)
+get_isg_pid() {
+    local port_pid=$(netstat -tnlp 2>/dev/null | grep ":$ISG_PORT " | awk '{print $7}' | cut -d'/' -f1 | head -n1)
     
     if [ -n "$port_pid" ] && [ "$port_pid" != "-" ]; then
-        # 验证是否为 isg-credential-services 相关进程（检查命令行、工作目录或可执行文件）
-        local cmdline=$(cat /proc/$port_pid/cmdline 2>/dev/null | tr '\0' ' ' | grep -i 'credential\|node.*start-termux' || true)
-        local cwd=$(ls -l /proc/$port_pid/cwd 2>/dev/null | grep -o 'credential\|isg.*credential' || true)
-        local exe=$(ls -l /proc/$port_pid/exe 2>/dev/null | grep -o 'node' || true)
+        # 验证是否为 isg-credential-services 相关进程
+        local cmdline=$(cat /proc/$port_pid/cmdline 2>/dev/null | tr '\0' ' ' | grep -i 'node\|npm\|credential' || true)
+        local cwd=$(ls -l /proc/$port_pid/cwd 2>/dev/null | grep -o 'credential\|isg-credential' || true)
+        local exe=$(ls -l /proc/$port_pid/exe 2>/dev/null | grep -o 'node\|npm' || true)
         
         # 如果找到任何一个匹配条件就认为是 isg-credential-services 进程
         if [ -n "$cmdline" ] || [ -n "$cwd" ] || [ -n "$exe" ]; then
@@ -68,7 +68,7 @@ get_credential_pid() {
         fi
         
         # 如果上述检查都失败，但端口确实被占用，可能是通过不同方式启动的
-        if netstat -tnlp 2>/dev/null | grep ":$CREDENTIAL_PORT " | grep -q "$port_pid"; then
+        if netstat -tnlp 2>/dev/null | grep ":$ISG_PORT " | grep -q "$port_pid"; then
             echo "$port_pid"
             return 0
         fi
@@ -116,7 +116,7 @@ fi
 # -----------------------------------------------------------------------------
 # 检查服务是否已经在运行
 # -----------------------------------------------------------------------------
-if get_credential_pid > /dev/null 2>&1; then
+if get_isg_pid > /dev/null 2>&1; then
     log "isg-credential-services 已经在运行"
     mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"success\",\"message\":\"service already running\",\"timestamp\":$(date +%s)}"
     exit 0
@@ -142,12 +142,12 @@ mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\
 
 TRIES=0
 while (( TRIES < MAX_TRIES )); do
-    if get_credential_pid > /dev/null 2>&1; then
+    if get_isg_pid > /dev/null 2>&1; then
         # 额外等待一下确保端口接口就绪
         sleep 3
         
         # 验证端口接口
-        if timeout 10 nc -z 127.0.0.1 "$CREDENTIAL_PORT" 2>/dev/null; then
+        if timeout 10 nc -z 127.0.0.1 "$ISG_PORT" 2>/dev/null; then
             log "isg-credential-services 服务启动成功"
             mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"success\",\"message\":\"service started successfully\",\"timestamp\":$(date +%s)}"
             exit 0
