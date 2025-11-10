@@ -172,6 +172,14 @@ try_restart_service() {
 # -----------------------------------------------------------------------------
 ensure_directories
 
+# 检查服务是否被禁用
+DISABLED_FLAG="$SERVICE_DIR/.disabled"
+if [ -f "$DISABLED_FLAG" ]; then
+    log "服务已被禁用 (.disabled 标志存在)，跳过检查"
+    mqtt_report "isg/autocheck/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"disabled\",\"message\":\"service disabled, skipping check\",\"timestamp\":$(date +%s)}"
+    exit 0
+fi
+
 # 检查是否有其他检查进程在运行
 if [ -f "$LOCK_FILE" ]; then
     LOCK_PID=$(cat "$LOCK_FILE" 2>/dev/null || echo "")
