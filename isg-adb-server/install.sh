@@ -281,7 +281,19 @@ mkdir -p "$SERVICE_CONTROL_DIR"
 cat << 'EOF' > "$RUN_FILE"
 #!/data/data/com.termux/files/usr/bin/sh
 # 启动 isg-adb-server (连接 ADB)
-exec adb connect 127.0.0.1:5555 2>&1
+# 连接 ADB
+adb connect 127.0.0.1:5555
+
+# 持续监控连接状态（防止 supervise 不断重启）
+# 每 30 秒检查一次，如果断开则退出让 supervise 重启
+while true; do
+    sleep 30
+    # 检查连接是否还在
+    if ! adb devices 2>/dev/null | grep -q "127.0.0.1:5555"; then
+        # 连接断开，退出让 supervise 重启
+        exit 1
+    fi
+done
 EOF
 
 # 赋予执行权限
@@ -371,3 +383,4 @@ else
 fi
 
 exit 0
+
