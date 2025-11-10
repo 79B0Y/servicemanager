@@ -92,8 +92,10 @@ check_adb_connected() {
 }
 
 check_install_status() {
-    # 通过 pkg show android-tools 检查是否安装
-    if pkg show android-tools >/dev/null 2>&1; then
+    # 通过 pkg list-installed 检查是否真的安装
+    if pkg list-installed 2>/dev/null | grep -q "^android-tools/"; then
+        echo "true"
+    elif dpkg -l android-tools 2>/dev/null | tail -n1 | awk '{print $1}' | grep -q "^ii$"; then
         echo "true"
     else
         echo "false"
