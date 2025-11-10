@@ -1,7 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
 # isg-adb-server 安装脚本
-# 版本: v1.0.0
+# 版本: v1.1.0
 # 功能: 安装 android-tools 并配置 ADB 服务
 # =============================================================================
 
@@ -69,7 +69,7 @@ mqtt_report() {
     local topic="$1"
     local payload="$2"
     load_mqtt_conf
-    mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" -u "$MQTT_USER" -P "$MQTT_PASS" -t "$topic" -m "$payload" || true
+    mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" -u "$MQTT_USER" -P "$MQTT_PASS" -t "$topic" -m "$payload" 2>/dev/null || true
     log "[MQTT] $topic -> $payload"
 }
 
@@ -84,6 +84,12 @@ record_install_history() {
     echo "$timestamp INSTALL $status $version" >> "$INSTALL_HISTORY_FILE"
 }
 
+check_adb_available() {
+    # 刷新环境变量
+    hash -r 2>/dev/null || true
+    command -v adb >/dev/null 2>&1
+}
+
 # =============================================================================
 # 主程序开始
 # =============================================================================
@@ -96,29 +102,93 @@ mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"messa
 # -----------------------------------------------------------------------------
 # 检查是否已安装
 # -----------------------------------------------------------------------------
+ALREADY_INSTALLED=false
+
+# 检查包是否真的已安装（不是仅存在于软件源）
 if pkg list-installed 2>/dev/null | grep -q "^android-tools/"; then
     CURRENT_VERSION=$(get_android_tools_version)
     log "android-tools already installed, version: $CURRENT_VERSION"
-    mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"skipped\",\"message\":\"android-tools already installed\",\"version\":\"$CURRENT_VERSION\",\"timestamp\":$(date +%s)}"
     
-    # 仍然需要配置 ADB 和注册服务
-    log "configuring ADB and service monitor"
+    # 检查 adb 命令是否真的可用
+    if check_adb_available; then
+        log "adb command is available, skipping installation"
+        ALREADY_INSTALLED=true
+    else
+        log "adb command not available, will reinstall"
+    fi
+elif dpkg -l android-tools 2>/dev/null | tail -n1 | awk '{print $1}' | grep -q "^ii$"; then
+    CURRENT_VERSION=$(get_android_tools_version)
+    log "android-tools installed (dpkg check), version: $CURRENT_VERSION"
+    
+    if check_adb_available; then
+        log "adb command is available, skipping installation"
+        ALREADY_INSTALLED=true
+    else
+        log "adb command not available, will reinstall"
+    fi
 else
-    # -----------------------------------------------------------------------------
-    # 安装 android-tools
-    # -----------------------------------------------------------------------------
+    log "android-tools not installed"
+fi
+
+# -----------------------------------------------------------------------------
+# 安装或重新安装 android-tools
+# -----------------------------------------------------------------------------
+if [ "$ALREADY_INSTALLED" = false ]; then
     log "installing android-tools package"
     mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"installing android-tools package\",\"timestamp\":$(date +%s)}"
 
-    if ! pkg update && pkg install -y android-tools; then
+    # 先尝试卸载（如果有残留）
+    if pkg list-installed 2>/dev/null | grep -q "^android-tools/"; then
+        log "removing old android-tools installation"
+        pkg uninstall -y android-tools 2>/dev/null || true
+        sleep 2
+    fi
+
+    # 安装
+    if ! pkg install -y android-tools; then
         log "failed to install android-tools"
         mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"android-tools installation failed\",\"timestamp\":$(date +%s)}"
         record_install_history "FAILED" "unknown"
         exit 1
     fi
 
+    log "android-tools installation completed"
+    
+    # 刷新命令缓存
+    hash -r 2>/dev/null || true
+    
+    # 验证安装
+    sleep 2
+    if ! check_adb_available; then
+        log "warning: adb command still not available after installation"
+        log "trying to locate adb manually..."
+        
+        # 尝试找到 adb
+        ADB_PATH=$(find $PREFIX -name "adb" -type f 2>/dev/null | head -n1)
+        if [ -n "$ADB_PATH" ]; then
+            log "found adb at: $ADB_PATH"
+            if [ ! -L "$PREFIX/bin/adb" ]; then
+                ln -sf "$ADB_PATH" "$PREFIX/bin/adb" 2>/dev/null || true
+                chmod +x "$PREFIX/bin/adb" 2>/dev/null || true
+                hash -r 2>/dev/null || true
+            fi
+        fi
+        
+        # 再次检查
+        if ! check_adb_available; then
+            log "error: adb command still not available"
+            log "please restart termux and run this script again"
+            mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"failed\",\"message\":\"adb command not available after installation\",\"timestamp\":$(date +%s)}"
+            record_install_history "FAILED" "unknown"
+            exit 1
+        fi
+    fi
+    
     INSTALLED_VERSION=$(get_android_tools_version)
     log "android-tools installed successfully, version: $INSTALLED_VERSION"
+else
+    INSTALLED_VERSION=$(get_android_tools_version)
+    log "using existing android-tools installation, version: $INSTALLED_VERSION"
 fi
 
 # -----------------------------------------------------------------------------
@@ -127,24 +197,75 @@ fi
 log "configuring ADB TCP port"
 mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"configuring ADB TCP port\",\"timestamp\":$(date +%s)}"
 
-# 尝试配置 ADB，如果失败不阻止安装
+# 检查 su 是否可用
 if command -v su >/dev/null 2>&1; then
     log "attempting to configure ADB with root privileges"
-    if su -c "
-        setprop service.adb.tcp.port $ADB_PORT
-        stop adbd
-        sleep 2
-        start adbd
-    " 2>/dev/null; then
-        log "ADB TCP port configured successfully"
+    
+    # 尝试配置 ADB (交互式方式最可靠)
+    CONFIG_SUCCESS=false
+    
+    # 方法 1: 交互式 su (最可靠)
+    if ! $CONFIG_SUCCESS; then
+        log "trying interactive su method..."
+        if su <<EOF 2>/dev/null
+setprop service.adb.tcp.port $ADB_PORT
+stop adbd
+sleep 2
+start adbd
+exit
+EOF
+        then
+            log "ADB TCP port configured successfully (interactive su)"
+            CONFIG_SUCCESS=true
+        fi
+    fi
+    
+    # 方法 2: su 0
+    if ! $CONFIG_SUCCESS; then
+        log "trying su 0 method..."
+        if su 0 sh -c "setprop service.adb.tcp.port $ADB_PORT; stop adbd; sleep 2; start adbd" 2>/dev/null; then
+            log "ADB TCP port configured successfully (su 0)"
+            CONFIG_SUCCESS=true
+        fi
+    fi
+    
+    if $CONFIG_SUCCESS; then
         sleep 3  # 等待 adbd 重启
+        log "waiting for adbd to restart..."
     else
-        log "warning: failed to configure ADB with root (su command failed or no root)"
-        log "you may need to manually configure ADB: su -c 'setprop service.adb.tcp.port 5555 && stop adbd && start adbd'"
+        log "warning: automatic ADB configuration failed"
+        log "please manually configure ADB using one of these methods:"
+        log "  Method 1 (recommended):"
+        log "    su"
+        log "    setprop service.adb.tcp.port 5555"
+        log "    stop adbd"
+        log "    start adbd"
+        log "    exit"
+        log "  Method 2: Enable 'Wireless debugging' in Android Developer Options"
     fi
 else
-    log "warning: su command not available, skipping ADB configuration"
-    log "you may need to manually configure ADB: su -c 'setprop service.adb.tcp.port 5555 && stop adbd && start adbd'"
+    log "warning: su command not available"
+    log "alternative: Enable 'Wireless debugging' in Android Developer Options"
+fi
+
+# -----------------------------------------------------------------------------
+# 连接 ADB
+# -----------------------------------------------------------------------------
+log "attempting to connect ADB"
+mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"connecting ADB\",\"timestamp\":$(date +%s)}"
+
+ADB_CONNECTED=false
+if check_adb_available; then
+    # 尝试连接
+    if adb connect "$ADB_DEVICE" 2>/dev/null | grep -q "connected"; then
+        log "ADB connected successfully to $ADB_DEVICE"
+        ADB_CONNECTED=true
+    else
+        log "warning: ADB connection failed"
+        log "this is normal if adbd is not configured yet"
+    fi
+else
+    log "error: adb command not available for connection test"
 fi
 
 # -----------------------------------------------------------------------------
@@ -172,38 +293,23 @@ touch "$DOWN_FILE"
 log "servicemonitor service registered successfully"
 
 # -----------------------------------------------------------------------------
-# 启动服务测试
+# 测试服务脚本
 # -----------------------------------------------------------------------------
-log "starting service for testing"
-mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"starting service for testing\",\"timestamp\":$(date +%s)}"
-
-bash "$SERVICE_DIR/start.sh" || true
-
-# -----------------------------------------------------------------------------
-# 等待服务启动
-# -----------------------------------------------------------------------------
-log "waiting for service ready"
-mqtt_report "isg/install/$SERVICE_ID/status" "{\"status\":\"installing\",\"message\":\"waiting for service ready\",\"timestamp\":$(date +%s)}"
-
-WAITED=0
-while [ "$WAITED" -lt "$MAX_WAIT" ]; do
-    if bash "$SERVICE_DIR/status.sh" --quiet; then
-        log "service is running after ${WAITED}s"
-        break
+if [ "$ADB_CONNECTED" = true ]; then
+    log "testing service scripts"
+    
+    # 测试 status.sh
+    if [ -f "$SERVICE_DIR/status.sh" ]; then
+        log "testing status.sh..."
+        if bash "$SERVICE_DIR/status.sh" --quiet; then
+            log "status.sh test passed"
+        else
+            log "warning: status.sh test failed (this is ok if adbd not fully configured)"
+        fi
     fi
-    sleep "$INTERVAL"
-    WAITED=$((WAITED + INTERVAL))
-done
-
-if [ "$WAITED" -ge "$MAX_WAIT" ]; then
-    log "warning: service not running after ${MAX_WAIT}s, but installation completed"
-    log "you may need to manually connect ADB or configure root access"
+else
+    log "skipping service tests (ADB not connected)"
 fi
-
-# -----------------------------------------------------------------------------
-# 停止服务 (安装完成后暂停运行)
-# -----------------------------------------------------------------------------
-bash "$SERVICE_DIR/stop.sh" || true
 
 # -----------------------------------------------------------------------------
 # 记录安装历史
@@ -227,12 +333,41 @@ mqtt_report "isg/install/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"sta
 log "================================================"
 log "安装摘要:"
 log "  - android-tools 版本: $VERSION_STR"
+log "  - ADB 命令: $(check_adb_available && echo "可用" || echo "不可用")"
 log "  - ADB 端口: $ADB_PORT"
 log "  - ADB 设备: $ADB_DEVICE"
+if [ "$ADB_CONNECTED" = true ]; then
+    log "  - 连接状态: 已连接 ✓"
+else
+    log "  - 连接状态: 未连接 (需要配置)"
+fi
 log "  - 服务状态: 已停止 (使用 start.sh 启动)"
 log "================================================"
-log "提示: 如果 ADB 连接失败，请手动执行:"
-log "  su -c 'setprop service.adb.tcp.port 5555 && stop adbd && start adbd'"
-log "  adb connect 127.0.0.1:5555"
+
+if [ "$ADB_CONNECTED" = false ]; then
+    log ""
+    log "⚠️  ADB 未连接，请手动配置:"
+    log ""
+    log "方法 1: 使用 Root 权限 (推荐)"
+    log "  su"
+    log "  setprop service.adb.tcp.port 5555"
+    log "  stop adbd"
+    log "  start adbd"
+    log "  exit"
+    log "  adb connect 127.0.0.1:5555"
+    log ""
+    log "方法 2: 使用配置助手"
+    log "  bash setup-adb.sh"
+    log ""
+    log "配置完成后运行:"
+    log "  bash start.sh    # 启动服务"
+    log "  bash status.sh   # 检查状态"
+else
+    log ""
+    log "✓ 安装完成！可以使用以下命令:"
+    log "  bash start.sh    # 启动服务"
+    log "  bash stop.sh     # 停止服务"
+    log "  bash status.sh   # 检查状态"
+fi
 
 exit 0
