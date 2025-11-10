@@ -28,7 +28,6 @@ DISABLED_FLAG="$SERVICE_DIR/.disabled"
 ADB_PORT="5555"
 ADB_HOST="127.0.0.1"
 ADB_DEVICE="${ADB_HOST}:${ADB_PORT}"
-MAX_TRIES=30
 
 # -----------------------------------------------------------------------------
 # 辅助函数
@@ -83,65 +82,95 @@ log "停止 isg-adb-server 服务"
 mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"stopping\",\"message\":\"stopping service\",\"timestamp\":$(date +%s)}"
 
 # -----------------------------------------------------------------------------
+# 创建禁用标志（必须最先做，防止 autocheck 重新连接）
+# -----------------------------------------------------------------------------
+touch "$DISABLED_FLAG"
+log "已创建 .disabled 标志以防止自动重连"
+
+# -----------------------------------------------------------------------------
 # 检查服务是否已经停止
 # -----------------------------------------------------------------------------
 if ! check_adb_connected; then
     log "isg-adb-server 已经停止 (ADB 未连接)"
-    # 确保创建禁用文件
-    touch "$DISABLED_FLAG"
+    # 确保创建 down 文件
     touch "$DOWN_FILE"
     mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"success\",\"message\":\"service already stopped\",\"timestamp\":$(date +%s)}"
     exit 0
 fi
 
 # -----------------------------------------------------------------------------
-# 发送停止信号
+# 创建 down 文件禁用自启动（防止 supervise 重启服务）
+# -----------------------------------------------------------------------------
+touch "$DOWN_FILE"
+log "已创建 down 文件以禁用自启动"
+mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"stopping\",\"message\":\"created down file to disable auto-start\",\"timestamp\":$(date +%s)}"
+
+# -----------------------------------------------------------------------------
+# 通知 supervise 停止服务（不杀死 supervise 进程本身）
 # -----------------------------------------------------------------------------
 if [ -e "$CONTROL_FILE" ]; then
-    echo d > "$CONTROL_FILE"
-    log "已发送 'd' 命令到 $CONTROL_FILE"
+    log "通知 supervise 停止 $SERVICE_ID 服务"
     
-    # 创建 down 文件禁用自启动
-    touch "$DOWN_FILE"
-    log "已创建 down 文件以禁用自启动"
-    mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"stopping\",\"message\":\"created down file to disable auto-start\",\"timestamp\":$(date +%s)}"
-else
-    log "控制文件不存在,尝试直接断开 ADB"
-    mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"stopping\",\"message\":\"control file not found, disconnecting ADB directly\",\"timestamp\":$(date +%s)}"
-    
-    # 直接断开 ADB 连接
-    if adb disconnect "$ADB_DEVICE" 2>/dev/null; then
-        log "ADB 断开成功"
-    else
-        log "ADB 断开命令执行失败,但继续处理"
+    # 优先使用 sv 命令停止（标准方式）
+    if command -v sv >/dev/null 2>&1; then
+        sv down "$SERVICE_CONTROL_DIR" 2>/dev/null || true
+        log "已使用 sv down 命令停止服务"
+        sleep 2
     fi
+    
+    # 发送 'd' 命令作为备用
+    echo d > "$CONTROL_FILE" 2>/dev/null || true
+    log "已发送 'd' 命令到 $CONTROL_FILE"
+    sleep 1
+    
+    # 查找并杀死由 run 脚本启动的 adb connect 子进程
+    # 注意：不杀死 supervise 进程本身，只杀死它管理的子进程
+    pkill -f "adb connect.*$ADB_DEVICE" 2>/dev/null || true
+    log "已终止所有 adb connect 子进程"
+else
+    log "控制文件不存在,跳过服务停止通知"
 fi
 
 # -----------------------------------------------------------------------------
-# 等待服务停止
+# 断开 ADB 连接
+# -----------------------------------------------------------------------------
+log "断开 ADB 连接"
+adb disconnect "$ADB_DEVICE" 2>/dev/null || true
+# 多次断开以确保彻底断开
+sleep 1
+adb disconnect "$ADB_DEVICE" 2>/dev/null || true
+
+# -----------------------------------------------------------------------------
+# 等待 ADB 断开
 # -----------------------------------------------------------------------------
 log "等待 ADB 断开"
 mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"stopping\",\"message\":\"waiting for ADB disconnection\",\"timestamp\":$(date +%s)}"
 
 TRIES=0
+MAX_TRIES=10  # 减少等待次数，因为我们已经主动断开了
+
 while (( TRIES < MAX_TRIES )); do
     if ! check_adb_connected; then
         log "isg-adb-server 已成功停止 (ADB 已断开)"
         break
     fi
     
-    # 如果超过一半时间还没停止,尝试强制断开
-    if [ $TRIES -gt $((MAX_TRIES / 2)) ]; then
-        log "强制断开 ADB 连接"
+    # 如果还是连接着，继续尝试断开
+    if [ $TRIES -gt 2 ]; then
+        log "尝试再次断开 ADB 连接 (第 $TRIES 次)"
         adb disconnect "$ADB_DEVICE" 2>/dev/null || true
-        # 尝试杀死 adb server
-        adb kill-server 2>/dev/null || true
-        sleep 2
-        # 重启 adb server
-        adb start-server 2>/dev/null || true
     fi
     
-    sleep 5
+    # 如果多次尝试失败，尝试重启 adb server
+    if [ $TRIES -eq 6 ]; then
+        log "尝试重启 ADB server"
+        adb kill-server 2>/dev/null || true
+        sleep 2
+        adb start-server 2>/dev/null || true
+        sleep 1
+    fi
+    
+    sleep 3
     TRIES=$((TRIES+1))
 done
 
@@ -149,17 +178,20 @@ done
 # 检查停止结果
 # -----------------------------------------------------------------------------
 if check_adb_connected; then
-    log "服务在 $((MAX_TRIES*5)) 秒后仍在运行,但已禁用自启动"
-    touch "$DISABLED_FLAG"
-    mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"warning\",\"message\":\"service still connected after stop timeout, but disabled\",\"timeout\":$((MAX_TRIES*5)),\"timestamp\":$(date +%s)}"
+    log "ADB 在 $((MAX_TRIES*3)) 秒后仍未断开,但已禁用自启动和停止服务"
+    mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"warning\",\"message\":\"ADB still connected after stop timeout, but service and auto-start disabled\",\"timeout\":$((MAX_TRIES*3)),\"timestamp\":$(date +%s)}"
+    
+    log "提示: ADB 连接可能由其他进程维护，可以尝试:"
+    log "  1. adb kill-server && adb start-server"
+    log "  2. 检查是否有其他服务在维护 ADB 连接"
+    log "  3. 重启 Termux"
     exit 1
 fi
 
 # -----------------------------------------------------------------------------
-# 创建禁用标志
+# 停止成功
 # -----------------------------------------------------------------------------
-touch "$DISABLED_FLAG"
-log "服务已停止,已创建 .disabled 标志"
+log "服务已停止 (ADB 已断开, .disabled 标志已创建)"
 mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"success\",\"message\":\"service stopped and disabled\",\"timestamp\":$(date +%s)}"
 
 log "isg-adb-server 服务停止完成"
