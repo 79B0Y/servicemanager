@@ -106,27 +106,39 @@ log "已创建 down 文件以禁用自启动"
 mqtt_report "isg/run/$SERVICE_ID/status" "{\"service\":\"$SERVICE_ID\",\"status\":\"stopping\",\"message\":\"created down file to disable auto-start\",\"timestamp\":$(date +%s)}"
 
 # -----------------------------------------------------------------------------
-# 通知 supervise 停止服务（不杀死 supervise 进程本身）
+# 停止 supervise 管理的服务（不杀死 supervise 进程本身）
 # -----------------------------------------------------------------------------
 if [ -e "$CONTROL_FILE" ]; then
-    log "通知 supervise 停止 $SERVICE_ID 服务"
+    log "停止 supervise 管理的 $SERVICE_ID 服务"
     
-    # 优先使用 sv 命令停止（标准方式）
+    # 方法 1: 使用 sv stop (停止并禁用)
     if command -v sv >/dev/null 2>&1; then
+        # 先 stop，再 down
+        sv stop "$SERVICE_CONTROL_DIR" 2>/dev/null || true
+        sleep 1
         sv down "$SERVICE_CONTROL_DIR" 2>/dev/null || true
-        log "已使用 sv down 命令停止服务"
+        log "已使用 sv stop + sv down 命令停止服务"
         sleep 2
     fi
     
-    # 发送 'd' 命令作为备用
-    echo d > "$CONTROL_FILE" 2>/dev/null || true
-    log "已发送 'd' 命令到 $CONTROL_FILE"
+    # 方法 2: 发送控制信号
+    # 发送 't' (terminate) 而不是 'd' (down)
+    echo t > "$CONTROL_FILE" 2>/dev/null || true
+    log "已发送 't' 命令终止服务进程"
     sleep 1
     
-    # 查找并杀死由 run 脚本启动的 adb connect 子进程
+    # 再发送 'd' 防止重启
+    echo d > "$CONTROL_FILE" 2>/dev/null || true
+    log "已发送 'd' 命令禁止重启"
+    sleep 1
+    
+    # 查找并杀死由 run 脚本启动的所有相关进程
     # 注意：不杀死 supervise 进程本身，只杀死它管理的子进程
     pkill -f "adb connect.*$ADB_DEVICE" 2>/dev/null || true
-    log "已终止所有 adb connect 子进程"
+    
+    # 同时杀死可能在运行的 run 脚本实例
+    pkill -f "$SERVICE_CONTROL_DIR/run" 2>/dev/null || true
+    log "已终止所有服务子进程"
 else
     log "控制文件不存在,跳过服务停止通知"
 fi
